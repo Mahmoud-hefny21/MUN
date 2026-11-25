@@ -200,7 +200,13 @@ async function snapshot(member) {
       SUM(CASE WHEN t.date>=? THEN t.amount ELSE 0 END)::integer AS month
       FROM mun_members m LEFT JOIN mun_transactions t ON m.id=t.member
       WHERE m.active=1 GROUP BY m.id`, weekStart.toISOString().slice(0,10), monthStart),
-    boardMembers: permissions.includes('members') ? await all('SELECT id, name, email, role, active, committee, position FROM mun_members ORDER BY name') : [],
+    // Everyone in the club: roster entries plus accounts, with the account's live values when it exists.
+    boardDirectory: permissions.includes('members') ? await all(`SELECT COALESCE(r.email, lower(m.email)) AS email,
+        COALESCE(m.name, r.name) AS name, COALESCE(m.role, r.role) AS role,
+        COALESCE(NULLIF(m.committee, ''), r.committee, '') AS committee, COALESCE(NULLIF(m.position, ''), r.position, '') AS position,
+        m.id IS NOT NULL AS signed_in, COALESCE(m.active, 1) AS active, r.email IS NOT NULL AS listed
+      FROM mun_roster r FULL OUTER JOIN mun_members m ON lower(m.email) = r.email
+      ORDER BY lower(COALESCE(m.name, r.name))`) : [],
     boardRoles: permissions.includes('members') ? [...Object.keys(rolePermissions).filter(role => !protectedRoles.includes(role)),
       ...(await all('SELECT name FROM mun_custom_roles ORDER BY name')).map(role => role.name)] : [],
     boardInvites: permissions.includes('members') ? await all('SELECT email,role FROM mun_member_invites WHERE created_at>now()-interval \'14 days\' ORDER BY created_at DESC LIMIT 50') : [],
@@ -483,6 +489,50 @@ async function mutate(path, member, body) {
       await audit(member.id, 'member.update', target.id);
     });
     return 'Member settings saved.';
+  }
+  // Directory: add or update a club member by university email (roster entry + their account if they signed in).
+  if (path === 'directory-save') {
+    requirePermission(member, 'members');
+    const email = clean(body.email, 254, 'email').toLowerCase();
+    check(z.email().safeParse(email).success, 'Enter a valid email address.');
+    const name = clean(body.name, 60, 'full name');
+    const role = body.role || 'Member';
+    check(await assignableRole(role), 'Choose a valid role.');
+    const committee = clean(body.committee || '', 60, 'committee', true);
+    const position = clean(body.position || '', 60, 'position', true);
+    if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
+    if (role === 'Head') check(committee, 'Assign a committee before granting the Head role.');
+    return transact(async () => {
+      await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
+      const account = await get('SELECT id, role FROM mun_members WHERE lower(email)=?', email);
+      check(!account || (!protectedRoles.includes(account.role) && account.id !== member.id), 'Full-access accounts are managed by the site owner.', 403);
+      const existed = await get('SELECT 1 AS found FROM mun_roster WHERE email=?', email);
+      await run(`INSERT INTO mun_roster(email,name,role,committee,position) VALUES (?,?,?,?,?)
+        ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, committee=excluded.committee, position=excluded.position, updated_at=now()`,
+        email, name, role, committee, position);
+      if (account) await run('UPDATE mun_members SET name=?, role=?, committee=?, position=?, active=1 WHERE id=?', name, role, committee, position, account.id);
+      await audit(member.id, existed ? 'directory.update' : 'directory.add', email);
+      return existed || account ? 'Member saved.' : 'Member added. They can sign in with Google using this email.';
+    });
+  }
+  // Directory: remove a member. They lose access immediately; their points and history are kept.
+  if (path === 'directory-remove') {
+    requirePermission(member, 'members');
+    const email = clean(body.email, 254, 'email').toLowerCase();
+    return transact(async () => {
+      await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
+      const account = await get('SELECT id, role FROM mun_members WHERE lower(email)=?', email);
+      check(!account || (!protectedRoles.includes(account.role) && account.id !== member.id), 'Full-access accounts are managed by the site owner.', 403);
+      const removed = (await run('DELETE FROM mun_roster WHERE email=?', email)).changes;
+      await run('DELETE FROM mun_member_invites WHERE email=?', email);
+      if (account) {
+        await run("UPDATE mun_members SET active=0, role='Member' WHERE id=?", account.id);
+        await run('DELETE FROM mun_sessions WHERE member=?', account.id);
+      }
+      check(removed || account, 'Member not found.', 404);
+      await audit(member.id, 'directory.remove', email);
+      return 'Member removed.';
+    });
   }
   if (path === 'committee') {
     requirePermission(member, 'members');

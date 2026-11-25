@@ -186,6 +186,17 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('member-email', { email: 'invited@gmail.com', role: 'Learning editor' }, owner)).status, 200);
     assert.equal((await post('member-email', { email: 'copresident@gmail.com', role: 'Co-President' }, owner)).status, 400);
     assert.equal((await post('member-email', { email: 'president@gmail.com', role: 'President' }, owner)).status, 400);
+    assert.equal((await post('directory-save', { email: 'Newbie@miuegypt.edu.eg', name: 'New Delegate', committee: '', role: 'Member', position: 'Delegate' }, owner)).status, 200);
+    const directory = (await (await get('/api/session', owner)).json()).data.boardDirectory;
+    assert.ok(directory.some(person => person.email === 'newbie@miuegypt.edu.eg' && person.position === 'Delegate' && !person.signed_in && person.active));
+    assert.ok(directory.some(person => person.email === 'rostered@gmail.com' && person.signed_in));
+    assert.equal((await post('directory-save', { email: 'rostered@gmail.com', name: 'Demoted', role: 'Member' }, owner)).status, 403);
+    assert.equal((await post('directory-save', { email: 'not-an-email', name: 'X' }, owner)).status, 400);
+    assert.equal((await post('directory-save', { email: 'x@miuegypt.edu.eg', name: 'X', role: 'Co-President' }, owner)).status, 400);
+    assert.equal((await post('directory-save', { email: 'x@miuegypt.edu.eg', name: 'X' }, member)).status, 403);
+    assert.equal((await post('directory-remove', { email: 'rostered@gmail.com' }, owner)).status, 403);
+    assert.equal((await post('directory-remove', { email: 'newbie@miuegypt.edu.eg' }, owner)).status, 200);
+    assert.equal((await post('directory-remove', { email: 'newbie@miuegypt.edu.eg' }, owner)).status, 404);
     const invited = await login('invited');
     assert.deepEqual((await (await get('/api/session', invited)).json()).data.permissions, ['learning']);
     const publishedActivity = (await (await post('activity', activity, owner)).json()).data.boardActivities[0];

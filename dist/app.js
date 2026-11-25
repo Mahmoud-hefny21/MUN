@@ -316,12 +316,27 @@ function admin() {
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
     <section class="card stack"><h2>Schedule a quiz</h2>${state.quizBank.length ? `<form data-action="schedule-quiz"><label>Question<select name="question" required>${state.quizBank.map(item => `<option value="${item.id}">${esc(item.question)}</option>`).join('')}</select></label><label>Cairo date<input type="date" name="date" min="${esc(state.quiz.date)}" required></label><label>Reward<select name="reward"><option>0</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label>Source URL<input type="url" name="source" required maxlength="500"></label><button class="primary">Schedule quiz</button></form>` : '<p>Add a question to the quiz bank before scheduling.</p>'}</section>
     <section class="card stack"><h2>Add resource</h2><form data-action="resource"><label>Title<input name="title" required maxlength="100"></label><label>Category<input name="category" required maxlength="60"></label><label>Material<textarea name="body" required maxlength="3500"></textarea></label><label>Link<input type="url" name="url" maxlength="500"></label><button class="primary">Add resource</button></form></section>` : '';
-  const memberRow = member => `<details class="member-row" data-search="${esc((member.name + ' ' + member.email).toLowerCase())}"><summary>${avatar(member)}<span class="list-main"><strong>${esc(shortName(member.name))}</strong><small>${esc(member.email)}</small></span><span class="badge${member.active ? '' : ' off'}">${esc(member.active ? member.role : 'Inactive')}</span>${icon('chevron')}</summary>
-    <form class="member-form" data-action="member" data-id="${esc(member.id)}"><div class="form-grid"><label>Role<select name="role">${state.boardRoles.map(role => `<option value="${esc(role)}" ${role === member.role ? 'selected' : ''}>${esc(role)}</option>`).join('')}</select></label><label>Committee<select name="committee"><option value="">Unassigned</option>${state.committees.map(item => `<option ${item.name === member.committee ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label><label>Position<input name="position" maxlength="60" value="${esc(member.position)}" placeholder="e.g. Chair"></label><label>Status<select name="active"><option value="1" ${member.active ? 'selected' : ''}>Active</option><option value="0" ${member.active ? '' : 'selected'}>Inactive</option></select></label></div><button class="primary">Save member</button></form></details>`;
-  const others = state.boardMembers.filter(member => !['President', 'Co-President'].includes(member.role));
-  const memberPanel = can('members') ? `<section class="card stack"><div class="section-head"><h2>Members</h2><span class="count">${state.members.length} active</span></div>
-    ${others.length > 3 ? '<input id="member-search" type="search" placeholder="Search by name or email" aria-label="Search members">' : ''}
-    <div class="member-list">${others.map(memberRow).join('') || '<p>No other members have signed in yet.</p>'}</div><p id="no-members" hidden>No members match your search.</p></section>` : '';
+  // Members directory: everyone from the club roster plus anyone who signed in.
+  const fullAccess = role => ['President', 'Co-President'].includes(role);
+  const committeeOptions = selected => '<option value="">Unassigned</option>' + state.committees.map(item => `<option ${item.name === selected ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
+  const roleOptions = selected => state.boardRoles.map(role => `<option ${role === selected ? 'selected' : ''}>${esc(role)}</option>`).join('');
+  const directory = state.boardDirectory || [];
+  const personStatus = person => !person.active ? ['Removed', 'off'] : person.signed_in ? ['Signed in', 'on'] : ['Not signed in yet', 'wait'];
+  const memberRow = person => {
+    const [status, tone] = personStatus(person);
+    const locked = fullAccess(person.role);
+    const detail = (label, value) => `<div><dt>${label}</dt><dd>${esc(value) || '—'}</dd></div>`;
+    return `<details class="member-row" data-search="${esc((person.name + ' ' + person.email + ' ' + person.position).toLowerCase())}" data-committee="${esc(person.committee)}"><summary>${avatar(person)}<span class="list-main"><strong>${esc(shortName(person.name))}</strong><small>${esc(person.committee || 'No committee')}${person.position ? ' · ' + esc(person.position) : ''}</small></span><span class="dot ${tone}" title="${status}"></span><span class="badge${locked ? ' board' : ''}">${esc(locked ? 'Full access' : person.role)}</span>${icon('chevron')}</summary>
+      <dl class="member-details">${detail('Full name', person.name)}${detail('Email', person.email)}${detail('Committee', person.committee)}${detail('Position', person.position)}${detail('Role', person.role)}${detail('Status', status)}</dl>
+      ${locked ? '<p class="hint">Full-access account. Managed by the site owner.</p>' : `<form class="member-form" data-action="directory-save"><input type="hidden" name="email" value="${esc(person.email)}"><div class="form-grid"><label>Full name<input name="name" required maxlength="60" value="${esc(person.name)}"></label><label>Role<select name="role">${roleOptions(person.role)}</select></label><label>Committee<select name="committee">${committeeOptions(person.committee)}</select></label><label>Position<input name="position" maxlength="60" value="${esc(person.position)}" placeholder="Optional"></label></div><button class="primary">${person.active ? 'Save member' : 'Restore member'}</button></form>
+      ${person.active ? `<button class="danger remove-member" data-remove-member="${esc(person.email)}">Remove member</button>` : ''}`}</details>`;
+  };
+  const counts = directory.reduce((all, person) => { if (person.active) all[person.committee || ''] = (all[person.committee || ''] || 0) + 1; return all; }, {});
+  const active = directory.filter(person => person.active);
+  const memberPanel = can('members') ? `<section class="card stack directory"><div class="section-head"><h2>All members</h2><span class="count">${active.length} members · ${active.filter(person => person.signed_in).length} signed in</span></div>
+    <div class="directory-tools"><input id="member-search" type="search" placeholder="Search name, email or position" aria-label="Search members"><select id="member-committee" aria-label="Filter by committee"><option value="*">All committees (${active.length})</option>${Object.keys(counts).sort().map(name => `<option value="${esc(name)}">${esc(name || 'No committee')} (${counts[name]})</option>`).join('')}</select></div>
+    <div class="member-list">${directory.map(memberRow).join('') || '<p>No members yet. Add the first one.</p>'}</div><p id="no-members" hidden>No members match your search.</p></section>` : '';
+  const addMemberPanel = can('members') ? `<section class="card stack"><h2>Add member</h2><p class="hint">They can sign in with Google using this email and get access right away.</p><form data-action="directory-save"><label>University email<input type="email" name="email" required maxlength="254" placeholder="name1234567@miuegypt.edu.eg"></label><label>Full name<input name="name" required maxlength="60"></label><div class="form-grid"><label>Committee<select name="committee">${committeeOptions('')}</select></label><label>Role<select name="role">${roleOptions('Member')}</select></label></div><label>Position<input name="position" maxlength="60" placeholder="Optional, e.g. Secretariat"></label><button class="primary">Add member</button></form></section>` : '';
   const rolePanel = can('members') ? `<section class="card stack"><h2>Assign a role by Google email</h2>
     <form data-action="member-email"><label>Google email<input type="email" name="email" maxlength="254" required></label>
     <label>Role<select name="role">${state.boardRoles.map(role => `<option>${esc(role)}</option>`).join('')}</select></label>
@@ -336,7 +351,7 @@ function admin() {
   const delivery = state.pushDelivery ? `<section class="card stack"><h2>Push delivery</h2><p>Last 24 hours. Accepted messages are tracked by OneSignal.</p>${state.pushDelivery.map(item => `<p>${esc(item.state)} · ${item.count}</p>`).join('') || '<p>No messages queued.</p>'}</section>` : '';
   const committeePanel = can('members') ? '<section class="card stack"><h2>Add committee</h2><form data-action="committee"><label>Name<input name="name" maxlength="60" required></label><button class="primary">Add committee</button></form></section>' : '';
   const sections = [
-    { id: 'members', label: 'Members', content: memberPanel + committeePanel },
+    { id: 'members', label: 'Members', content: memberPanel + `<div class="stack">${addMemberPanel}${committeePanel}</div>` },
     { id: 'roles', label: 'Roles & access', content: rolePanel },
     { id: 'feed', label: 'Feed & polls', content: postPanel },
     { id: 'activities', label: 'Activities', content: activityPanel },
@@ -409,10 +424,11 @@ function render() {
 }
 window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
 content.addEventListener('input', event => {
-  if (event.target.id === 'member-search') {
-    const query = event.target.value.trim().toLowerCase();
+  if (event.target.id === 'member-search' || event.target.id === 'member-committee') {
+    const query = content.querySelector('#member-search').value.trim().toLowerCase();
+    const committee = content.querySelector('#member-committee').value;
     const rows = [...content.querySelectorAll('.member-row')];
-    rows.forEach(row => { row.hidden = !row.dataset.search.includes(query); });
+    rows.forEach(row => { row.hidden = !row.dataset.search.includes(query) || (committee !== '*' && row.dataset.committee !== committee); });
     document.querySelector('#no-members').hidden = rows.some(row => !row.hidden);
     return;
   }
@@ -532,6 +548,10 @@ content.addEventListener('click', event => {
   if (!state || !button || button.form || busy) return;
   if (button.dataset.signout !== undefined) return signOut(button);
   if (button.dataset.install !== undefined) return showWelcome(true);
+  if (button.dataset.removeMember) {
+    if (confirm('Remove ' + button.dataset.removeMember + ' from the club? They lose access right away; their points and history are kept.')) perform(button, () => update('directory-remove', { email: button.dataset.removeMember }));
+    return;
+  }
   if (button.dataset.photo) return photoAction(button);
   if (button.dataset.push) return perform(button, async () => {
     if (button.dataset.push === 'prepare') {
