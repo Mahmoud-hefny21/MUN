@@ -122,11 +122,17 @@ function admin() {
   const activityPanel = can('activities') ? `<section class="card stack"><h2>Publish activity</h2>
       <form data-action="activity"><label>Title<input name="title" required maxlength="100"></label><label>Type<select name="kind"><option>Event</option><option>Training</option><option>Competition</option><option>Challenge</option><option>Organizing</option></select></label><label>Start time in your device timezone<input name="starts" type="datetime-local" required></label><label>Audience<select name="committee"><option value="">Entire club</option>${state.committees.map(item => `<option>${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Publish activity</button></form>
       <h2>Record attendance</h2><form data-action="attendance"><label>Activity<select name="activity" required>${state.boardActivities.map(item => `<option value="${esc(item.id)}">${esc(item.title)} ? ${esc(clubTime(item.starts_at))} Cairo</option>`).join('')}</select></label><label>Member<select name="member" required>${state.members.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Record attendance</button></form></section>` : '';
-  return intro + `<div class="admin-grid">${postPanel}${pointsPanel}${learningPanel}${memberPanel}${activityPanel}${can('members') ? '<section class="card stack"><h2>Add committee</h2><form data-action="committee"><label>Name<input name="name" maxlength="60" required></label><button class="primary">Add committee</button></form></section>' : ''}</div>`;
+  const delivery = state.pushDelivery ? `<section class="card stack"><h2>Push delivery</h2><p>Last 24 hours. Accepted messages are tracked by OneSignal.</p>${state.pushDelivery.map(item => `<p>${esc(item.state)} ? ${item.count}</p>`).join('') || '<p>No messages queued.</p>'}</section>` : '';
+  return intro + `<div class="admin-grid">${delivery}${postPanel}${pointsPanel}${learningPanel}${memberPanel}${activityPanel}${can('members') ? '<section class="card stack"><h2>Add committee</h2><form data-action="committee"><label>Name<input name="name" maxlength="60" required></label><button class="primary">Add committee</button></form></section>' : ''}</div>`;
 }
 function notifications() {
   const entries = state.notifications.map(item => `<article class="news"><div class="label">${esc(item.kind)}${item.read_at ? '' : ' ? Unread'}</div><h3><a href="${esc(item.route)}">${esc(item.title)}</a></h3>${item.read_at ? '' : `<button data-read="${esc(item.id)}">Mark as read</button>`}</article>`).join('');
-  return heading('Inbox', 'Recent club and account notifications.') + `<section class="card stack">${state.unreadNotifications ? '<button data-read-all>Mark all as read</button>' : ''}${entries || '<p>No notifications yet.</p>'}</section>`;
+  const preferences = state.pushPreference
+    ? `<section class="card stack"><h2>Push notifications</h2><p>${state.pushPreference.enabled ? 'Push is enabled for your account.' : 'Get updates from the club on this device.'}</p>
+      <div class="actions"><button data-push="${munPush.isReady() ? 'enable' : 'prepare'}">${munPush.isReady() ? 'Allow on this device' : 'Set up this device'}</button>
+      ${state.pushPreference.enabled ? '<button data-push="disable">Turn off push</button>' : ''}</div></section>`
+    : '';
+  return heading('Inbox', 'Recent club and account notifications.') + preferences + `<section class="card stack">${state.unreadNotifications ? '<button data-read-all>Mark all as read</button>' : ''}${entries || '<p>No notifications yet.</p>'}</section>`;
 }
 const views = { home, feed, fantasy, assistant, resources, quiz, profile, admin, notifications };
 
@@ -211,6 +217,7 @@ async function update(action, fields) {
   notice = result.message;
 }
 document.querySelector('#logout').addEventListener('click', event => perform(event.currentTarget, async () => {
+  try { await munPush.logout(); } catch {}
   await api('logout', {});
   state = undefined;
   session = { googleReady: true };
@@ -221,6 +228,18 @@ document.querySelector('#logout').addEventListener('click', event => perform(eve
 content.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!state || !button || button.form || busy) return;
+  if (button.dataset.push) return perform(button, async () => {
+    if (button.dataset.push === 'prepare') {
+      await munPush.prepare();
+      notice = 'Select Allow on this device to finish setup.';
+      return;
+    }
+    const enabled = button.dataset.push === 'enable';
+    if (enabled) await munPush.optIn();
+    state.pushPreference = await api('push/preference', { enabled });
+    if (!enabled) await munPush.optOut();
+    notice = enabled ? 'Push preference saved.' : 'Push notifications turned off.';
+  });
   if (button.dataset.newChat !== undefined) {
     conversation = [];
     render();

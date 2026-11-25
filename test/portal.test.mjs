@@ -6,14 +6,34 @@ import { test } from 'node:test';
 test('Google sign-in, shared club activity, roles and single awards', async () => {
   const port = process.env.MUN_BROWSER === '1' ? '39177' : '0';
   const origin = 'http://127.0.0.1:' + port;
+  const testAI = process.env.MUN_AI_FIXTURE === '1';
+  let aiMode = 'primary';
+  const providerCalls = [];
   Object.assign(process.env, {
     APP_ORIGIN: origin, PORT: port, NODE_ENV: 'test', MUN_TEST_POSTGRES: 'memory',
+    AI_ENABLED: String(testAI), AI_PRIMARY_PROVIDER: 'gemini',
+    GEMINI_API_KEY: 'fixture-gemini', GEMINI_MODEL: 'fixture',
+    GROQ_API_KEY: 'fixture-groq', GROQ_MODEL: 'fixture',
     GOOGLE_CLIENT_ID: 'fixture-client', GOOGLE_CLIENT_SECRET: 'fixture-secret', GOOGLE_CALLBACK_URL: origin + '/api/auth/google/callback'
   });
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const clients = new Map();
   const request = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
+    if (String(url).startsWith('https://generativelanguage.googleapis.com/')) {
+      assert.equal(options.headers['x-goog-api-key'], 'fixture-gemini');
+      providerCalls.push('gemini');
+      return aiMode === 'primary'
+        ? Response.json({ candidates: [{ content: { parts: [{ text: 'Primary answer [1]' }] } }] })
+        : new Response(null, { status: 429 });
+    }
+    if (url === 'https://api.groq.com/openai/v1/chat/completions') {
+      assert.equal(options.headers.Authorization, 'Bearer fixture-groq');
+      providerCalls.push('groq');
+      return aiMode === 'fallback'
+        ? Response.json({ choices: [{ message: { content: 'Fallback answer [1]' } }] })
+        : new Response(null, { status: 503 });
+    }
     if (url === 'https://www.googleapis.com/oauth2/v3/certs') {
       return Response.json({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test' }] });
     }
@@ -53,6 +73,11 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
   try {
     assert.match(await (await get('/')).text(), /id="logout"/);
     assert.match(await (await get('/app.js')).text(), /Continue with Google/);
+    const pushWorker = await get('/push/onesignal/OneSignalSDKWorker.js');
+    assert.match(pushWorker.headers.get('content-type'), /application\/javascript/);
+    assert.match(await pushWorker.text(), /\/sdks\/web\/v16\/OneSignalSDK\.sw\.js/);
+    assert.equal((await get('/api/cron/push')).status, 404);
+    assert.equal((await post('push/identity', {}, '')).status, 401);
     assert.equal((await (await get('/api/session')).json()).signedIn, false);
     assert.equal(await login('owner'), undefined);
     await provisionPresident('owner');
@@ -64,6 +89,19 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     const library = await (await post('assistant/library', { question: 'rules of procedure' }, member)).json();
     assert.match(library.sources[0].title, /Rules of Procedure/);
     assert.equal((await post('assistant/library', { question: 'rules of procedure' }, '')).status, 401);
+    if (testAI) {
+      const ask = () => post('assistant', { question: 'rules of procedure' }, member);
+      const primary = await (await ask()).json();
+      assert.equal(primary.text, 'Primary answer [1]');
+      assert.equal(primary.sources.length, 1);
+      aiMode = 'fallback';
+      assert.equal((await (await ask()).json()).text, 'Fallback answer [1]');
+      aiMode = 'outage';
+      assert.equal((await ask()).status, 503);
+      assert.equal((await ask()).status, 429);
+      assert.deepEqual(providerCalls, ['gemini', 'gemini', 'groq', 'gemini', 'groq']);
+      assert.equal((await post('assistant/library', { question: 'rules of procedure' }, member)).status, 200);
+    }
     assert.equal((await post('profile', { name: 'Delegate', photo: '', role: 'President' }, member)).status, 400);
     const poll = { type: 'Poll', title: 'Workshop topic', body: 'Choose a subject', options: 'Debate\nResearch' };
     assert.equal((await post('publish', poll, member)).status, 403);

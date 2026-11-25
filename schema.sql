@@ -48,6 +48,17 @@
     PRIMARY KEY(event_id, member)
   );
   CREATE INDEX IF NOT EXISTS mun_notifications_member_read ON mun_notifications(member, read_at);
+  CREATE TABLE IF NOT EXISTS mun_push_preferences (
+    member TEXT PRIMARY KEY REFERENCES mun_members(id)
+  );
+  CREATE TABLE IF NOT EXISTS mun_push_outbox (
+    event_id TEXT NOT NULL, member TEXT NOT NULL, message_key UUID NOT NULL UNIQUE,
+    state TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(), next_attempt TIMESTAMPTZ NOT NULL DEFAULT now(),
+    provider_id TEXT, PRIMARY KEY(event_id,member),
+    FOREIGN KEY(event_id,member) REFERENCES mun_notifications(event_id,member)
+  );
+  CREATE INDEX IF NOT EXISTS mun_push_outbox_due ON mun_push_outbox(next_attempt) WHERE state IN ('pending','sending');
   CREATE TABLE IF NOT EXISTS mun_ai_counters (
     bucket TEXT PRIMARY KEY, used INTEGER NOT NULL CHECK(used >= 0)
   );

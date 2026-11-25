@@ -32,3 +32,7 @@ See [test results](TEST_RESULTS.md), [security review](SECURITY_REPORT.md), [per
 | Core regression | PASS in covered scenarios | Integration suite and Chromium checks passed. Prisma and OneSignal remain pending from the earlier V5 audit. |
 | Security | PASS for checks run | Known credential format scan found no tracked Git history matches. Dependency audit returned zero. OAuth and role checks passed locally. |
 | Performance | FAIL target on local diagnostic | 140 simultaneous read requests from two fixture accounts, zero errors, p50 620 ms, p95 855 ms and p99 866 ms. Sustained staging, Lighthouse and 200-user stress were unverified. |
+
+## OneSignal checkpoint
+
+OneSignal v16 scoped worker, authenticated pseudonymous identity, explicit device opt-in, account preference, durable targeted outbox and delivery summary are implemented. Isolated fixtures validate allowlist enforcement, ES256 signature, deduplication, retry, delivery acceptance tracking and lock-screen payload privacy. No real notifications were sent. Local App ID and Safari ID are configured and the REST key is present. The identity key and eligible designated test accounts are missing, and Vercel CLI reported logged out. Production returned HTTP 500 on the read-only probe. See [push runbook](PUSH_RUNBOOK.md).

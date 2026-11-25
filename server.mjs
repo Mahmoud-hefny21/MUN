@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { profileUpdate } from './packages/contracts/src/common.ts';
 import { generateAnswer } from './assistant-providers.mjs';
 import { createDatabase } from './database.mjs';
+import { createPush } from './onesignal.mjs';
 
 const env = process.env;
 const port = Number(env.PORT || 3000);
@@ -22,6 +23,7 @@ if (googleCallback.origin !== origin || !googleCallbacks.includes(googleCallback
 }
 const redirectUri = googleCallback.href;
 const { run, get, all, transact, close } = await createDatabase();
+const push = createPush({ env, origin, run, get, all });
 const json = JSON.stringify;
 const parse = JSON.parse;
 const token = () => randomBytes(32).toString('base64url');
@@ -208,6 +210,8 @@ async function snapshot(member) {
         result: answer ? { ...answer, sourceUrl: question.source_url } : undefined }
       : { date, result: answer },
     quizBank: permissions.includes('learning') ? await all('SELECT id, question FROM mun_quizzes ORDER BY id DESC LIMIT 100') : [],
+    pushPreference: await push.preference(member.id),
+    pushDelivery: member.role === 'President' ? await push.deliverySummary() : null,
     permissions, aiEnabled: providers.length > 0
   };
 }
@@ -238,6 +242,7 @@ async function notify(id, kind, title, route, recipient = null, committee = null
   } else {
     await run('INSERT INTO mun_notifications(event_id,member) SELECT ?,id FROM mun_members WHERE active=1', id);
   }
+  await push.enqueue(id);
 }
 function lines(value, max) {
   return [...new Set(clean(value, max, 'choices', true).split(/\r?\n/).map(item => item.trim()).filter(Boolean))];
@@ -496,6 +501,8 @@ const assets = {
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/pwa.js': ['pwa.js', 'text/javascript; charset=utf-8'],
   '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
+  '/push-client.js': ['push-client.js', 'text/javascript; charset=utf-8'],
+  '/push/onesignal/OneSignalSDKWorker.js': ['push/onesignal/OneSignalSDKWorker.js', 'application/javascript; charset=utf-8'],
   '/offline.html': ['offline.html', 'text/html; charset=utf-8'],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
   '/logo.jpg': ['logo.jpg', 'image/jpeg'],
@@ -507,10 +514,18 @@ app.use(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.onesignal.com; connect-src 'self' https://*.onesignal.com; frame-src https://*.onesignal.com; worker-src 'self'; img-src 'self' https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   try {
     const url = new URL(req.url, origin);
     const path = url.pathname;
+    if (req.method === 'GET' && path === '/api/cron/push') {
+      check(push.authorizeCron(req.headers.authorization), 'Unavailable.', 404);
+      const date = today();
+      if (await dailyQuestion(date)) {
+        await transact(() => notify('quiz:' + date, 'Daily Quiz', 'Today’s quiz is available', '#quiz'));
+      }
+      return respond(res, 200, { processed: await push.flush(12) });
+    }
     if (req.method === 'GET' && path === '/api/v1/health/live') return respond(res, 200, { data: { status: 'ok' } });
     if (req.method === 'GET' && path === '/api/v1/health/ready') {
       try {
@@ -543,7 +558,21 @@ app.use(async (req, res) => {
     check(currentMember, 'Sign in with Google to continue.', 401);
     if (path === '/api/assistant') return respond(res, 200, await askAssistant(currentMember, data));
     if (path === '/api/assistant/library') return respond(res, 200, await searchLibrary(data));
+    if (path === '/api/push/identity') {
+      const config = push.identity(currentMember.id);
+      check(config, 'Push notifications are unavailable for this account.', 403);
+      return respond(res, 200, config);
+    }
+    if (path === '/api/push/preference') {
+      check(push.allowed(currentMember.id), 'Push notifications are unavailable for this account.', 403);
+      check(typeof data.enabled === 'boolean', 'Select a valid push preference.');
+      await push.setPreference(currentMember.id, data.enabled);
+      return respond(res, 200, { enabled: data.enabled });
+    }
     const message = await mutate(path.slice(5), currentMember, data);
+    if (['publish','points','resource','activity','schedule-quiz'].includes(path.slice(5))) {
+      try { await push.flush(); } catch { console.error('Push dispatch will retry.'); }
+    }
     const refreshedMember = await memberFor(req);
     check(refreshedMember, 'Sign in with Google to continue.', 401);
     return respond(res, 200, { message, data: await snapshot(refreshedMember) });
