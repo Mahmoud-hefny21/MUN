@@ -46,7 +46,6 @@ main { margin-left: 230px; }
 [hidden] { display: none !important; }
 .signed-out .sidebar, .signed-out .topbar { display: none; }
 .signed-out main { margin-left: 0; }
-.login { max-width: 1000px; margin: clamp(16px, 8vh, 100px) auto; }
 .admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .admin-grid-single { grid-template-columns: minmax(0, 640px); }
 .admin-nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--night); }
@@ -146,7 +145,6 @@ form button { justify-self: start; }
   .hero h1 { font-size: 2.1rem; }
   .hero p { margin: 8px 0 16px; font-size: .92rem; }
   .hero-art { height: 120px; margin: 8px 0 16px; transform: none; }
-  .login .hero-art { height: 150px; }
   h1 { font-size: 2.1rem; }
   h2 { font-size: 1.35rem; }
   .page-heading { margin-bottom: 16px; }
@@ -282,3 +280,27 @@ form[data-action="quiz"] .choice:has(input:checked), form[data-action="vote"] .c
 form[data-action="quiz"] .choice input, form[data-action="vote"] .choice input { width: 18px; height: 18px; }
 form[data-action="quiz"] button, form[data-action="vote"] button { min-height: 46px; }
 @media (max-width: 767px) { .mobile-tabs .i { width: 20px; height: 20px; } }
+.login-page { min-height: calc(100vh - 60px); display: grid; place-items: center; padding: 8px 0; }
+.signed-out { background: radial-gradient(ellipse 80% 55% at 50% 0%, rgba(188, 147, 67, .16), transparent 70%), var(--base); }
+.login-card { width: min(440px, 100%); display: grid; justify-items: center; gap: 6px; text-align: center; padding: 34px 28px 26px; background: rgba(2, 6, 33, .86); border: 1px solid #4f422c; border-radius: 24px; box-shadow: 0 24px 60px rgba(0, 0, 0, .45); }
+.login-logo { width: 120px; height: 120px; object-fit: cover; border-radius: 50%; border: 2px solid #514329; margin-bottom: 10px; filter: drop-shadow(0 6px 18px rgba(188, 147, 67, .25)); }
+.login-card .eyebrow { margin-bottom: 2px; }
+.login-card h1 { font-size: 2.5rem; }
+.login-lead { margin: 6px 0 18px; font-size: .95rem; max-width: 36ch; }
+.google-button { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 12px; border-radius: 12px; background: #fff; color: #1f1f1f; font-weight: 600; font-size: 1rem; border: 1px solid #dadce0; transition: box-shadow .15s, transform .15s; }
+.google-button:hover { box-shadow: 0 4px 16px rgba(235, 199, 120, .35); }
+.google-button:active { transform: scale(.99); }
+.g-logo { width: 22px; height: 22px; flex: none; }
+.login-status { width: 100%; display: grid; gap: 4px; text-align: start; padding: 12px 14px; margin-bottom: 12px; border: 1px solid #514329; border-radius: 12px; background: rgba(235, 199, 120, .08); color: var(--text); font-size: .9rem; }
+.login-status strong { color: var(--bright); }
+.login-status span { color: var(--muted); }
+.login-perks { list-style: none; width: 100%; margin: 20px 0 6px; padding: 16px 0 0; border-top: 1px solid var(--line); display: grid; gap: 10px; text-align: start; }
+.login-perks li { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .9rem; }
+.login-perks .i { width: 20px; height: 20px; color: var(--bright); }
+.login-foot { margin-top: 10px; font-size: .78rem; }
+@media (max-width: 480px) {
+  .login-page { min-height: calc(100vh - 36px); }
+  .login-card { padding: 28px 20px 22px; border-radius: 20px; }
+  .login-logo { width: 104px; height: 104px; }
+  .login-card h1 { font-size: 2.2rem; }
+}
