@@ -1,4 +1,4 @@
-const cacheName = 'mun-public-static-v5';
+const cacheName = 'mun-public-static-v6';
 const publicAssets = ['/offline.html', '/style.css', '/logo.jpg', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable.png', '/icons/apple.png'];
 
 self.addEventListener('install', event => {

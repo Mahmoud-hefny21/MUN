@@ -81,6 +81,13 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
   }
   try {
     assert.match(await (await get('/')).text(), /id="logout"/);
+    // Scripts and CSS are versioned in the page and cached long-term; unversioned requests still revalidate.
+    const page = await (await get('/')).text();
+    const appVersion = page.match(/src="\/app\.js\?v=([^"]+)"/)[1];
+    assert.match(page, /href="\/style\.css\?v=/);
+    assert.equal((await get('/app.js?v=' + appVersion)).headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal((await get('/app.js')).headers.get('cache-control'), 'no-cache');
+    assert.equal((await get('/app.js?v=stale')).headers.get('cache-control'), 'no-cache');
     const robots = await get('/robots.txt');
     assert.equal(robots.status, 200);
     const robotsText = await robots.text();

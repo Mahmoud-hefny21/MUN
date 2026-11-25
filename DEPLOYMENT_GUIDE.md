@@ -1,26 +1,34 @@
-# Deployment and rollback
+# Deployment
 
-The existing GitHub commit and the current working tree are different versions. Deploy this branch only to a review-approved isolated environment after local checks.
+Production runs on Vercel (project `mun`, region `fra1`, next to the Neon database in `eu-central-1`) at https://www.miumunal.org. Deploys are made from the CLI (`vercel deploy --prod`); automatic Git deployments are off in `vercel.json`.
 
-1. Create a separate, empty or anonymized Neon staging branch. Set its pooled URL as `DATABASE_URL` and its direct URL as `DIRECT_DATABASE_URL` in server secrets. Keep credentials outside Git.
-2. Review `schema.sql` against the destination and confirm a restore point. Run `npm run db:migrate:deploy` with the isolated direct URL. Run `npm start` for a local smoke test. The application exports Express from `server.mjs` for the Vercel preset.
-3. Use the exact preview origin in `APP_ORIGIN`, and configure the Google consent app and authorized callback at that origin followed by `/api/auth/google/callback`. Use authorized test accounts. Keep external AI disabled for preview.
-4. Check health endpoints, static asset MIME types, Chrome install behavior, Google callback and sign-out, board approval, and member workflows on the deployed preview before considering release.
-5. Confirm repository visibility, branch protection, provider conditions and board approvals before enabling automatic deployments or promoting a build. The repository configuration requests disabled automatic Git deployments during development.
+## Release checklist
 
-Rollback the app to a previous known-good version only after checking schema compatibility. Keep additive tables in place. If compatibility fails, prefer forward repair and test it against a restored staging copy before changing production.
+1. `npm run build`, `npm run typecheck`, `npm test` (and the browser checks with `MUN_BROWSER=1`) pass locally; CI must be green.
+2. Schema changes are additive. Apply them before deploying code that uses them: `npm run db:migrate:deploy` with `DIRECT_DATABASE_URL`.
+3. `vercel deploy --prod`, then check `/api/v1/health/ready`, sign-in, and the page you changed on https://www.miumunal.org.
+4. Roll back from the Vercel dashboard (promote the previous deployment). Keep added tables and columns; fix forward if the schema moved on.
 
-The local callback is `http://localhost:3000/api/auth/google/callback`. The production callback is `https://www.miumunal.org/api/auth/google/callback`. Use the [Production environment template](.env.vercel.example) for Vercel. Set the existing database URL and Google client secret as sensitive values in the dashboard. Leave the development `.env` configured for localhost. Environment changes apply to new deployments.
+## Environment (Vercel → Production)
 
-Legacy projects can temporarily configure `GOOGLE_CALLBACK_URL` with the same-origin legacy path while changing the Google console. Before promoting, review the existing admin records. If the previous board owner was promoted solely by an environment variable, explicitly provision the verified, already registered account in the correct database before switching versions.
+Use [.env.vercel.example](.env.vercel.example) as the list. Secrets (database URL, Google secret, API keys, Cloudinary secret, OneSignal keys, `CRON_SECRET`) are stored as sensitive values. Changes apply to new deployments.
 
-## Provider eligibility
+- `APP_ORIGIN=https://www.miumunal.org`, `GOOGLE_CALLBACK_URL=https://www.miumunal.org/api/auth/google/callback`.
+- Locally, keep `APP_ORIGIN=http://localhost:3000` and the localhost callback.
 
-- Vercel's Hobby documentation limits the tier to personal noncommercial use. Confirm eligibility for the club with the account owner and provider before preview deployment. [Vercel Hobby](https://vercel.com/docs/plans/hobby)
-- Gemini terms prohibit use in apps likely to be accessed by under-18 users. Gemini is excluded from live provider selection here. GroqCloud has an 18+ customer requirement. Any Groq deployment needs a qualified organization operator and confirmation that downstream use, model terms and privacy are suitable. [Gemini terms](https://ai.google.dev/gemini-api/terms) · [Groq Services Agreement](https://console.groq.com/docs/legal/services-agreement) · [Groq rate limits](https://console.groq.com/docs/rate-limits)
-- OneSignal advertises a free tier for organizations. Subscription/delivery quotas, secure identity features and age/data terms still need plan-specific verification. [OneSignal pricing](https://onesignal.com/pricing)
-- Actual GitHub Actions and Neon usage, remaining quotas, backup retention, e-mail and storage provider eligibility need review before rollout.
+## Domains
 
-## Production domain
+`miumunal.org` redirects to `www` (Vercel domain settings) and `mun-smoky.vercel.app` redirects to `www` (`vercel.json`). The Google OAuth client must list the `www` callback, and OneSignal's web configuration must use `https://www.miumunal.org` as its site URL.
 
-The official domain is `https://www.miumunal.org`. The apex `miumunal.org` redirects to `www` (Vercel domain settings), and the old `mun-smoky.vercel.app` URL redirects there too (`vercel.json`). Production `APP_ORIGIN` and `GOOGLE_CALLBACK_URL` use the `www` origin. The Google OAuth client must list `https://www.miumunal.org/api/auth/google/callback`, and the OneSignal web configuration must use `https://www.miumunal.org` as its site URL.
+## Push notifications (OneSignal)
+
+- Needs `ONESIGNAL_APP_ID`, `ONESIGNAL_SAFARI_WEB_ID`, `ONESIGNAL_REST_API_KEY` (from API keys), `ONESIGNAL_IDENTITY_PRIVATE_KEY_BASE64` (the Identity Verification private key, base64 PEM) with `ONESIGNAL_IDENTITY_VERIFIED=true` and the dashboard's Token Identity Verification turned on, plus `PUSH_ENABLED=true`, `PUSH_MODE=members`, `PUSH_AUDIENCE_APPROVED=true` and `CRON_SECRET`.
+- The page asks for permission after sign-in. The OneSignal worker is served at `/push/onesignal/OneSignalSDKWorker.js` (scope `/push/onesignal/`); the app's own worker stays at `/`.
+- Notifications are queued with the inbox event, sent on the next write, and the daily Vercel cron (`/api/cron/push`) drains the rest and announces the Daily Quiz.
+
+## Provider notes
+
+- Vercel Hobby is for personal, noncommercial use; confirm the club's eligibility. [Vercel Hobby](https://vercel.com/docs/plans/hobby)
+- Gemini stays disabled in production (its terms exclude apps likely used by under-18s). Groq requires an 18+ operator and suitable downstream use. [Gemini terms](https://ai.google.dev/gemini-api/terms) · [Groq agreement](https://console.groq.com/docs/legal/services-agreement)
+- Free Cloudinary accounts block public PDF links, so resource PDFs open through `/api/resource-file` (signed-in members, 10-minute signed download).
+- Neon's free compute sleeps when idle; the first request after a pause is slower.

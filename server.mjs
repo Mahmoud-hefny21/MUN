@@ -794,10 +794,18 @@ const assets = {
 };
 // Read each static file once per instance; text is pre-gzipped and every file gets an ETag for 304 revalidation.
 const loadedAssets = new Map();
+// Scripts and the stylesheet are referenced from the page as "/file?v=<hash>", so browsers can keep them
+// without revalidating; a new deploy changes the hash and the page fetches the new file.
+const versioned = ['/app.js', '/style.css', '/pwa.js', '/push-client.js'];
+const version = path => loadAsset(path).etag.slice(1, 11);
 function loadAsset(path) {
   if (!loadedAssets.has(path)) {
     const [file, mime] = assets[path];
-    const body = readFileSync(file);
+    let body = readFileSync(file);
+    if (path === '/') {
+      body = Buffer.from(body.toString('utf8').replace(/(src|href)="\/?(app\.js|style\.css|pwa\.js|push-client\.js)"/g,
+        (_, attribute, name) => attribute + '="/' + name + '?v=' + version('/' + name) + '"'));
+    }
     const image = mime.startsWith('image/');
     loadedAssets.set(path, {
       mime, body,
@@ -846,7 +854,8 @@ app.use(async (req, res) => {
     }
     if (req.method === 'GET' && Object.hasOwn(assets, path)) {
       const asset = loadAsset(path);
-      res.setHeader('Cache-Control', asset.cache);
+      const pinned = versioned.includes(path) && url.searchParams.get('v') === version(path);
+      res.setHeader('Cache-Control', pinned ? 'public, max-age=31536000, immutable' : asset.cache);
       res.setHeader('ETag', asset.etag);
       res.setHeader('Vary', 'Accept-Encoding');
       if (req.headers['if-none-match'] === asset.etag) { res.writeHead(304); return res.end(); }
