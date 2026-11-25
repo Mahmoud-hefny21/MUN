@@ -160,13 +160,18 @@ const views = { home, feed, fantasy, assistant, resources, quiz, profile, admin,
 
 function render() {
   document.body.classList.toggle('signed-out', !state);
-  const requested = location.hash.slice(1).split('/')[0];
-  document.body.classList.toggle('admin-page', Boolean(state && requested === 'admin'));
+  let requested = location.hash.slice(1).split('/')[0];
+  const boardAccess = Boolean(state?.permissions.length);
+  document.querySelector('#board-link').hidden = !boardAccess;
+  if (state && requested === 'admin' && !boardAccess) {
+    history.replaceState(history.state, '', '#home');
+    requested = 'home';
+  }
+  document.body.classList.toggle('admin-page', boardAccess && requested === 'admin');
   if (!state) {
     content.innerHTML = `<section class="hero login"><div class="hero-copy"><span class="eyebrow">MIU Model United Nations &amp; Arab League</span><h1>Member portal</h1><p>Sign in to follow club updates, prepare for committee and take part in club activities.</p>${new URLSearchParams(location.search).get('membership') === 'pending' ? '<p role="status">Ask the club board to approve your membership before you sign in.</p>' : ''}${session.googleReady ? '<a class="button primary" href="/api/auth/google">Continue with Google</a>' : '<p role="status">' + esc(session.message || 'Google sign-in is awaiting setup.') + '</p>'}</div><img class="hero-art" src="logo.jpg" alt="MIU Model United Nations and Arab League XIX emblem"></section>`;
     return;
   }
-  document.querySelector('[href="#admin"]').hidden = !state.permissions.length;
   const route = Object.hasOwn(views, requested) ? requested : 'home';
   document.querySelector('#inbox-link').textContent = 'Inbox' + (state.unreadNotifications ? ' (' + state.unreadNotifications + ')' : '');
   document.querySelector('#crumb').textContent = 'Club portal / ' + pages[route];

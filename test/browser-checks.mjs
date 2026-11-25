@@ -89,12 +89,21 @@ export async function verifyBrowser(base, session, memberSession) {
     await context.addCookies([{ name: 'mun_session', value: memberSession.split('=')[1], url: base, httpOnly: true }]);
     await page.goto(base + '/?browser=member#home');
     await page.getByRole('heading', { name: /Welcome, delegate/ }).waitFor();
+    await page.setViewportSize({ width: 1200, height: 800 });
+    assert.equal(await page.locator('#board-link').isVisible(), false);
+    await page.setViewportSize({ width: 320, height: 640 });
     await page.getByRole('navigation', { name: 'Member navigation' }).getByRole('link', { name: 'Feed' }).click();
     await page.getByText(/Vote recorded/).waitFor();
     await page.evaluate(() => { location.hash = 'quiz'; });
     await page.getByText(/Correct. You earned 3 points/).waitFor();
-    await page.evaluate(() => { location.hash = 'admin'; });
-    await page.getByText('This workspace is available to authorized board members.').waitFor();
+    await page.evaluate(() => { location.hash = 'profile'; });
+    await page.getByRole('heading', { name: 'My Profile' }).waitFor();
+    assert.equal(await page.locator('#content a[href="#admin"]').count(), 0);
+    for (const route of ['admin', 'admin/roles']) {
+      await page.evaluate(hash => { location.hash = hash; }, route);
+      await page.waitForURL(/#home$/);
+      await page.getByRole('heading', { name: /Welcome, delegate/ }).waitFor();
+    }
     assert.equal(await page.getByRole('heading', { name: 'Create a role' }).count(), 0);
     assert.deepEqual(errors, []);
   } finally {
