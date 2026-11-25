@@ -187,7 +187,7 @@ form button { justify-self: start; }
     z-index: 3;
     left: max(10px, env(safe-area-inset-left));
     right: max(10px, env(safe-area-inset-right));
-    bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+    bottom: max(2px, calc(env(safe-area-inset-bottom, 0px) - 16px));
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 2px;
