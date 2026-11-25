@@ -9,5 +9,5 @@ export const healthStatus = z.strictObject({
   data: z.strictObject({ status: z.enum(['ok', 'ready']) })
 });
 
-export type ProfileUpdate = z.infer<typeof profileUpdate>;
-export type HealthStatus = z.infer<typeof healthStatus>;
+/** @typedef {z.infer<typeof profileUpdate>} ProfileUpdate */
+/** @typedef {z.infer<typeof healthStatus>} HealthStatus */

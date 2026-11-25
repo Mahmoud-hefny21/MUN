@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import express from 'express';
 import { z } from 'zod';
-import { profileUpdate } from './packages/contracts/src/common.ts';
+import { profileUpdate } from './packages/contracts/src/common.mjs';
 import { generateAnswer } from './assistant-providers.mjs';
 import { createDatabase } from './database.mjs';
 import { createPush } from './onesignal.mjs';
@@ -551,17 +551,20 @@ async function searchLibrary(body) {
 }
 
 const assets = {
-  '/': ['index.html', 'text/html; charset=utf-8'],
-  '/style.css': ['style.css', 'text/css; charset=utf-8'],
-  '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/pwa.js': ['pwa.js', 'text/javascript; charset=utf-8'],
-  '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
-  '/push-client.js': ['push-client.js', 'text/javascript; charset=utf-8'],
-  '/push/onesignal/OneSignalSDKWorker.js': ['push/onesignal/OneSignalSDKWorker.js', 'application/javascript; charset=utf-8'],
-  '/offline.html': ['offline.html', 'text/html; charset=utf-8'],
-  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
-  '/logo.jpg': ['logo.jpg', 'image/jpeg'],
-  ...Object.fromEntries(['icon-192', 'icon-512', 'maskable', 'apple'].map(icon => ['/icons/' + icon + '.png', ['icons/' + icon + '.png', 'image/png']]))
+  '/': [new URL('./dist/index.html', import.meta.url), 'text/html; charset=utf-8'],
+  '/style.css': [new URL('./dist/style.css', import.meta.url), 'text/css; charset=utf-8'],
+  '/app.js': [new URL('./dist/app.js', import.meta.url), 'text/javascript; charset=utf-8'],
+  '/pwa.js': [new URL('./dist/pwa.js', import.meta.url), 'text/javascript; charset=utf-8'],
+  '/sw.js': [new URL('./dist/sw.js', import.meta.url), 'text/javascript; charset=utf-8'],
+  '/push-client.js': [new URL('./dist/push-client.js', import.meta.url), 'text/javascript; charset=utf-8'],
+  '/push/onesignal/OneSignalSDKWorker.js': [new URL('./dist/push/onesignal/OneSignalSDKWorker.js', import.meta.url), 'application/javascript; charset=utf-8'],
+  '/offline.html': [new URL('./dist/offline.html', import.meta.url), 'text/html; charset=utf-8'],
+  '/manifest.webmanifest': [new URL('./dist/manifest.webmanifest', import.meta.url), 'application/manifest+json'],
+  '/logo.jpg': [new URL('./dist/logo.jpg', import.meta.url), 'image/jpeg'],
+  '/icons/icon-192.png': [new URL('./dist/icons/icon-192.png', import.meta.url), 'image/png'],
+  '/icons/icon-512.png': [new URL('./dist/icons/icon-512.png', import.meta.url), 'image/png'],
+  '/icons/maskable.png': [new URL('./dist/icons/maskable.png', import.meta.url), 'image/png'],
+  '/icons/apple.png': [new URL('./dist/icons/apple.png', import.meta.url), 'image/png']
 };
 const app = express();
 app.disable('x-powered-by');
@@ -592,7 +595,7 @@ app.use(async (req, res) => {
     }
     if (req.method === 'GET' && Object.hasOwn(assets, path)) {
       const [file, mime] = assets[path];
-      const asset = readFileSync(new URL('./dist/' + file, import.meta.url));
+      const asset = readFileSync(file);
       res.writeHead(200, { 'Content-Type': mime });
       return res.end(asset);
     }
