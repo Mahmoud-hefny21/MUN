@@ -572,4 +572,49 @@ function updateKeyboardLayout() {
 visualViewport?.addEventListener('resize', updateKeyboardLayout);
 document.addEventListener('focusin', updateKeyboardLayout);
 document.addEventListener('focusout', () => requestAnimationFrame(updateKeyboardLayout));
+// Pull to refresh: drag down from the top of the page to reload club data (works in the installed app too).
+(() => {
+  const indicator = document.createElement('div');
+  indicator.className = 'ptr';
+  indicator.setAttribute('aria-hidden', 'true');
+  indicator.innerHTML = icon('refresh');
+  document.body.append(indicator);
+  const threshold = 70;
+  let startY = null, pull = 0, refreshing = false;
+  const reset = () => { pull = 0; indicator.style.transform = ''; indicator.classList.remove('ready', 'dragging'); };
+  document.addEventListener('touchstart', event => {
+    startY = !refreshing && !busy && window.scrollY <= 0 && event.touches.length === 1 && !document.querySelector('#welcome') ? event.touches[0].clientY : null;
+  }, { passive: true });
+  document.addEventListener('touchmove', event => {
+    if (startY === null) return;
+    pull = Math.max(0, (event.touches[0].clientY - startY) * 0.5);
+    if (window.scrollY > 0) pull = 0;
+    indicator.classList.add('dragging');
+    indicator.classList.toggle('ready', pull >= threshold);
+    indicator.style.transform = `translate(-50%, ${Math.min(pull, threshold + 20)}px) rotate(${pull * 3}deg)`;
+  }, { passive: true });
+  document.addEventListener('touchend', async () => {
+    if (startY === null) return;
+    startY = null;
+    if (pull < threshold) return reset();
+    refreshing = true;
+    indicator.classList.remove('dragging');
+    indicator.classList.add('spinning');
+    indicator.style.transform = `translate(-50%, ${threshold}px)`;
+    try {
+      navigator.serviceWorker?.getRegistration().then(registration => registration?.update()).catch(() => {});
+      if (!state) return location.reload();
+      const fresh = await api('session');
+      session = fresh;
+      state = fresh.data;
+      render();
+    } catch {
+      location.reload();
+    } finally {
+      refreshing = false;
+      indicator.classList.remove('spinning');
+      reset();
+    }
+  });
+})();
 loadSession();

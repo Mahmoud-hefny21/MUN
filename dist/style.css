@@ -308,3 +308,12 @@ form[data-action="quiz"] button, form[data-action="vote"] button { min-height: 4
 /* No zoom: stop double-tap zoom, and keep inputs at 16px so iOS does not zoom on focus. */
 html, body { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; }
 @media (max-width: 767px) { input, textarea, select { font-size: 16px; } }
+/* Pull to refresh */
+body { overscroll-behavior-y: contain; }
+.ptr { position: fixed; z-index: 15; top: -48px; left: 50%; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: var(--panel); border: 1px solid var(--line); color: var(--muted); box-shadow: 0 6px 18px rgba(0, 0, 0, .4); transform: translate(-50%, 0); transition: transform .25s ease, color .15s; pointer-events: none; }
+.ptr.dragging { transition: color .15s; }
+.ptr.ready, .ptr.spinning { color: var(--bright); border-color: #514329; }
+.ptr .i { width: 20px; height: 20px; }
+.ptr.spinning .i { animation: ptr-spin .8s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ptr.spinning .i { animation-duration: 2s; } }
