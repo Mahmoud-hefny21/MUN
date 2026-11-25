@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 
-export async function verifyBrowser(base, session) {
+export async function verifyBrowser(base, session, memberSession) {
   const browser = await chromium.launch({ executablePath: process.env.MUN_CHROMIUM_PATH });
   const context = await browser.newContext();
   await context.addCookies([{ name: 'mun_session', value: session.split('=')[1], url: base, httpOnly: true }]);
@@ -40,6 +40,16 @@ export async function verifyBrowser(base, session) {
     }
     await page.goto(base + '/#home');
     await page.setViewportSize({ width: 320, height: 640 });
+    await page.evaluate(() => { location.hash = 'admin'; });
+    await page.getByLabel('Role name').fill('Browser editor');
+    await page.getByLabel('Manage quizzes and resources').check();
+    await page.getByRole('button', { name: 'Create role' }).click();
+    await page.getByRole('status').filter({ hasText: 'Role created.' }).waitFor();
+    await page.getByLabel('Google email').fill('browser-invite@gmail.com');
+    const invite = page.locator('form[data-action="member-email"]');
+    await invite.getByLabel('Role').selectOption('Browser editor');
+    await invite.getByRole('button', { name: 'Save role by email' }).click();
+    await page.getByText(/browser-invite@gmail.com/).waitFor();
     await page.evaluate(() => { location.hash = 'assistant'; });
     await page.getByRole('textbox', { name: 'Your question' }).fill('rules of procedure');
     assert.equal(await page.getByRole('navigation', { name: 'Member navigation' }).isVisible(), true);
@@ -69,6 +79,16 @@ export async function verifyBrowser(base, session) {
     await page.getByRole('heading', { name: /Welcome/ }).waitFor();
     await page.getByRole('button', { name: 'Sign out' }).click();
     await page.getByRole('link', { name: 'Continue with Google' }).waitFor();
+    await context.addCookies([{ name: 'mun_session', value: memberSession.split('=')[1], url: base, httpOnly: true }]);
+    await page.goto(base + '/?browser=member#home');
+    await page.getByRole('heading', { name: /Welcome, delegate/ }).waitFor();
+    await page.getByRole('navigation', { name: 'Member navigation' }).getByRole('link', { name: 'Feed' }).click();
+    await page.getByText(/Vote recorded/).waitFor();
+    await page.evaluate(() => { location.hash = 'quiz'; });
+    await page.getByText(/Correct. You earned 3 points/).waitFor();
+    await page.evaluate(() => { location.hash = 'admin'; });
+    await page.getByText('This workspace is available to authorized board members.').waitFor();
+    assert.equal(await page.getByRole('heading', { name: 'Create a role' }).count(), 0);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

@@ -83,3 +83,12 @@
   CREATE INDEX IF NOT EXISTS mun_attendance_member ON mun_attendance(member);
   CREATE INDEX IF NOT EXISTS mun_resources_fts ON mun_resources USING GIN
     (to_tsvector('simple', COALESCE(title,'') || ' ' || COALESCE(category,'') || ' ' || COALESCE(body,'')));
+  CREATE TABLE IF NOT EXISTS mun_custom_roles (
+    name TEXT PRIMARY KEY, permissions TEXT[] NOT NULL,
+    CHECK (permissions <@ ARRAY['posts','points','learning','activities']::text[])
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS mun_custom_roles_lower ON mun_custom_roles(lower(name));
+  CREATE TABLE IF NOT EXISTS mun_member_invites (
+    email TEXT PRIMARY KEY, role TEXT NOT NULL, committee TEXT NOT NULL,
+    granted_by TEXT NOT NULL REFERENCES mun_members(id), created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );

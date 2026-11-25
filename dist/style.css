@@ -82,7 +82,7 @@ a.card:hover { border-color: var(--gold); }
 form { display: grid; gap: 12px; }
 label { display: grid; gap: 5px; }
 input, textarea, select { background: var(--base); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 9px 11px; min-width: 0; width: 100%; }
-input[type="radio"] { width: auto; accent-color: var(--gold); }
+input[type="radio"], input[type="checkbox"] { width: auto; accent-color: var(--gold); }
 .choice { display: flex; align-items: center; gap: 8px; padding: 8px; }
 form button { justify-self: start; }
 .result, .notice { padding: 12px; border: 1px solid #514329; border-radius: 7px; color: var(--bright); margin-top: 12px; }

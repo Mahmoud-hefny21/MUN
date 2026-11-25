@@ -9,6 +9,8 @@ Run from this directory with Node.js 24 or newer and a Neon Postgres database. T
 
 Apply schema changes explicitly to an isolated database using `DIRECT_DATABASE_URL` and `npm run db:migrate:deploy`. Existing data stays in the `mun_` tables. To add starter learning links and quiz questions to an isolated development database, run the server with `MUN_SEED=true`.
 
+In Board Workspace, the President can assign an existing member by their exact Google email or reserve a role for 14 days before first sign-in. A reservation is redeemed only with a verified Gmail address or a verified address managed by the matching Google Workspace domain. Existing accounts that still show pending can be enabled by saving their role. Custom roles use selectable club-wide operational permissions. Only the President can manage memberships and create roles.
+
 The assistant serves prepared answers and official links by default. External generation remains subject to the organization's provider and privacy approval. See [deployment and provider eligibility](DEPLOYMENT_GUIDE.md).
 
 ## Deploy

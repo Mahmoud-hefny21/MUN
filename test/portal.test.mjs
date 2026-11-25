@@ -43,7 +43,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal(createHash('sha256').update(verifier).digest('base64url'), client.challenge);
     const payload = Buffer.from(JSON.stringify({
       iss: 'https://accounts.google.com', aud: 'fixture-client', nonce: client.nonce,
-      exp: Date.now() / 1000 + 600, sub: code, email: code + '@example.test', email_verified: true, name: code
+      exp: Date.now() / 1000 + 600, sub: code, email: code + (code === 'invited' ? '@gmail.com' : '@example.test'), email_verified: true, name: code
     })).toString('base64url');
     const token = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'test' })).toString('base64url') + '.' + payload;
     return Response.json({ id_token: token + '.' + sign('RSA-SHA256', Buffer.from(token), privateKey).toString('base64url') });
@@ -146,6 +146,15 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('vote', { id: ga.id, choice: '0' }, member)).status, 400);
     const activity = { title: 'Delegate practice', starts: new Date(Date.now() - 60000).toISOString(), kind: 'Training', committee: 'Security Council' };
     assert.equal((await post('activity', activity, member)).status, 403);
+    assert.equal((await post('custom-role', { name: 'Learning editor', permissions: ['learning'] }, member)).status, 403);
+    assert.equal((await post('custom-role', { name: 'Learning editor', permissions: ['members'] }, owner)).status, 400);
+    assert.equal((await post('custom-role', { name: 'Learning editor', permissions: ['learning'] }, owner)).status, 200);
+    assert.equal((await post('member-email', { email: 'delegate@example.test', role: 'Learning editor', committee: 'Security Council' }, owner)).status, 200);
+    assert.equal((await (await get('/api/session', member)).json()).data.profile.role, 'Learning editor');
+    assert.equal((await post('publish', poll, member)).status, 403);
+    assert.equal((await post('member-email', { email: 'invited@gmail.com', role: 'Learning editor' }, owner)).status, 200);
+    const invited = await login('invited');
+    assert.deepEqual((await (await get('/api/session', invited)).json()).data.permissions, ['learning']);
     const publishedActivity = (await (await post('activity', activity, owner)).json()).data.boardActivities[0];
     const attendance = { activity: publishedActivity.id, member: data.profile.id };
     assert.equal((await post('attendance', attendance, owner)).status, 200);
@@ -165,8 +174,9 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
       assert.equal(errors, 0);
     }
     if (process.env.MUN_BROWSER === '1') {
+      assert.equal((await post('member-email', { email: 'delegate@example.test', role: 'Member' }, owner)).status, 200);
       const { verifyBrowser } = await import('./browser-checks.mjs');
-      await verifyBrowser(base, await login('owner'));
+      await verifyBrowser(base, await login('owner'), member);
     }
     assert.equal((await post('member', { id: data.profile.id, role: 'Member', active: '0' }, owner)).status, 200);
     assert.equal((await (await get('/api/session', member)).json()).signedIn, false);

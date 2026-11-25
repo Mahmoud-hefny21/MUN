@@ -132,7 +132,13 @@ async function googleLogin(req, res, url) {
     await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
     const existing = await get('SELECT id FROM mun_members WHERE lower(email)=? AND id<>? LIMIT 1', email, identity.sub);
     check(!existing, 'This account needs board-assisted linking. Sign in with your original account or contact the board.', 409);
-    return get('INSERT INTO mun_members(id,email,name,photo,active) VALUES (?,?,?,?,0) ON CONFLICT(id) DO UPDATE SET email=excluded.email RETURNING active', identity.sub, email, name, photo);
+    const authoritativeEmail = email.endsWith('@gmail.com') || identity.hd === email.split('@').at(-1);
+    const invite = authoritativeEmail ? await get('SELECT role,committee FROM mun_member_invites WHERE email=? AND created_at>now()-interval \'14 days\'', email) : null;
+    const result = await get(`INSERT INTO mun_members(id,email,name,photo,active,role,committee) VALUES (?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET email=excluded.email RETURNING active`,
+      identity.sub, email, name, photo, Number(Boolean(invite)), invite?.role || 'Member', invite?.committee || '');
+    if (invite && result.active) await run('DELETE FROM mun_member_invites WHERE email=?', email);
+    return result;
   });
   if (!joined.active) return redirect(res, '/?membership=pending');
   const session = token();
@@ -146,7 +152,9 @@ async function googleLogin(req, res, url) {
 async function memberFor(req) {
   const session = cookie(req, 'mun_session');
   if (!session) return null;
-  const member = await get('SELECT m.* FROM mun_members m JOIN mun_sessions s ON m.id=s.member WHERE s.id=? AND s.expires>?', digest(session), Date.now());
+  const member = await get(`SELECT m.*, r.permissions AS custom_permissions FROM mun_members m
+    JOIN mun_sessions s ON m.id=s.member LEFT JOIN mun_custom_roles r ON r.name=m.role
+    WHERE s.id=? AND s.expires>?`, digest(session), Date.now());
   return member?.active ? member : null;
 }
 const rolePermissions = {
@@ -156,7 +164,9 @@ const rolePermissions = {
   'Assigned Admin': ['learning'],
   Member: []
 };
-const permissionsFor = member => member.role === 'Head' && !member.committee ? [] : rolePermissions[member.role] || [];
+const permissionsFor = member => member.role === 'Head' && !member.committee ? [] : (Object.hasOwn(rolePermissions, member.role) ? rolePermissions[member.role] : member.custom_permissions || []);
+const assignableRole = async role => typeof role === 'string' && role !== 'President' &&
+  (Object.hasOwn(rolePermissions, role) || Boolean(await get('SELECT 1 FROM mun_custom_roles WHERE name=?', role)));
 const canManagePost = (member, post) => member.role !== 'Head' || Boolean(member.committee && post.committee === member.committee);
 async function dailyQuestion(date = today()) {
   const question = await get(`SELECT q.*, d.reward, d.source_url FROM mun_daily_quizzes d
@@ -184,6 +194,9 @@ async function snapshot(member) {
       FROM mun_members m LEFT JOIN mun_transactions t ON m.id=t.member
       WHERE m.active=1 GROUP BY m.id`, weekStart.toISOString().slice(0,10), monthStart),
     boardMembers: permissions.includes('members') ? await all('SELECT id, name, email, role, active, committee, position FROM mun_members ORDER BY name') : [],
+    boardRoles: permissions.includes('members') ? [...Object.keys(rolePermissions).filter(role => role !== 'President'),
+      ...(await all('SELECT name FROM mun_custom_roles ORDER BY name')).map(role => role.name)] : [],
+    boardInvites: permissions.includes('members') ? await all('SELECT email,role FROM mun_member_invites WHERE created_at>now()-interval \'14 days\' ORDER BY created_at DESC LIMIT 50') : [],
     committees: permissions.includes('members') || (permissions.includes('posts') && member.role !== 'Head') ? await all('SELECT name FROM mun_committees ORDER BY name') : [],
     posts: postRows.map(post => {
       const options = parse(post.options);
@@ -371,11 +384,53 @@ async function mutate(path, member, body) {
     });
     return 'Points adjustment recorded.';
   }
+  if (path === 'custom-role') {
+    requirePermission(member, 'members');
+    const name = clean(body.name, 40, 'role name');
+    check(/^[a-zA-Z][a-zA-Z0-9 -]{1,39}$/.test(name) && !Object.keys(rolePermissions).some(role => role.toLowerCase() === name.toLowerCase()), 'Choose a different role name.');
+    const permissions = body.permissions;
+    check(Array.isArray(permissions) && permissions.length > 0 && permissions.length <= 4 &&
+      permissions.every(permission => ['posts','points','learning','activities'].includes(permission)), 'Choose valid operational permissions.');
+    await transact(async () => {
+      check((await run('INSERT INTO mun_custom_roles VALUES (?,?) ON CONFLICT DO NOTHING', name, [...new Set(permissions)])).changes, 'This role already exists.', 409);
+      await audit(member.id, 'role.create', name);
+    });
+    return 'Role created.';
+  }
+  if (path === 'member-email') {
+    requirePermission(member, 'members');
+    const email = clean(body.email, 254, 'Google email').toLowerCase();
+    check(z.email().safeParse(email).success && await assignableRole(body.role), 'Choose a valid Google email and role.');
+    const committee = clean(body.committee || '', 60, 'committee', true);
+    if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
+    if (body.role === 'Head') check(committee, 'Assign a committee before granting the Head role.');
+    return transact(async () => {
+      await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
+      const matches = await all('SELECT id FROM mun_members WHERE lower(email)=? LIMIT 2', email);
+      check(matches.length < 2, 'This email needs account review.', 409);
+      if (matches.length) return mutate('member', member, { id: matches[0].id, role: body.role, active: '1', committee });
+      await run(`INSERT INTO mun_member_invites(email,role,committee,granted_by) VALUES (?,?,?,?)
+        ON CONFLICT(email) DO UPDATE SET role=excluded.role,committee=excluded.committee,granted_by=excluded.granted_by,created_at=now()`,
+        email, body.role, committee, member.id);
+      await audit(member.id, 'member.invite', email);
+      return 'Role reserved for this Google email for 14 days.';
+    });
+  }
+  if (path === 'member-invite-revoke') {
+    requirePermission(member, 'members');
+    const email = clean(body.email, 254, 'Google email').toLowerCase();
+    await transact(async () => {
+      await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
+      await run('DELETE FROM mun_member_invites WHERE email=?', email);
+      await audit(member.id, 'member.invite.revoke', email);
+    });
+    return 'Pending invitation removed.';
+  }
   if (path === 'member') {
     requirePermission(member, 'members');
     const target = await get('SELECT * FROM mun_members WHERE id=?', clean(body.id, 255, 'member'));
     check(target && target.role !== 'President' && target.id !== member.id, 'That account requires a separate administrative review.', 403);
-    check(Object.hasOwn(rolePermissions, body.role) && body.role !== 'President' && ['0', '1'].includes(body.active), 'Invalid member settings.');
+    check(await assignableRole(body.role) && ['0', '1'].includes(body.active), 'Invalid member settings.');
     const committee = clean(body.committee ?? target.committee, 60, 'committee', true);
     const position = clean(body.position ?? target.position, 60, 'position', true);
     if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');

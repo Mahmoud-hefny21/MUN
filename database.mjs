@@ -65,7 +65,7 @@ export async function createDatabase({ migrate = false } = {}) {
     },
     all: async (sql, ...args) => (await execute(sql, args)).rows,
     get: async (sql, ...args) => (await execute(sql, args)).rows[0],
-    transact: callback => transaction(client => context.run(client, callback)),
+    transact: callback => context.getStore() ? callback() : transaction(client => context.run(client, callback)),
     close
   };
 }
