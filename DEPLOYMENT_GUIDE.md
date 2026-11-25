@@ -10,7 +10,9 @@ The existing GitHub commit and the current working tree are different versions. 
 
 Rollback the app to a previous known-good version only after checking schema compatibility. Keep additive tables in place. If compatibility fails, prefer forward repair and test it against a restored staging copy before changing production.
 
-The local callback is `http://localhost:3000/api/auth/google/callback`. The requested production callback is `https://mun-smoky.vercel.app/api/auth/google/callback`. Legacy projects can temporarily configure `GOOGLE_CALLBACK_URL` with the same-origin legacy path while changing the Google console. Before promoting, review the existing admin records. If the previous board owner was promoted solely by an environment variable, explicitly provision the verified, already registered account in the correct database before switching versions.
+The local callback is `http://localhost:3000/api/auth/google/callback`. The production callback is `https://mun-smoky.vercel.app/api/auth/google/callback`. Use the [Production environment template](.env.vercel.example) for Vercel. Set the existing database URL and Google client secret as sensitive values in the dashboard. Leave the development `.env` configured for localhost. Environment changes apply to new deployments.
+
+Legacy projects can temporarily configure `GOOGLE_CALLBACK_URL` with the same-origin legacy path while changing the Google console. Before promoting, review the existing admin records. If the previous board owner was promoted solely by an environment variable, explicitly provision the verified, already registered account in the correct database before switching versions.
 
 ## Provider eligibility
 
