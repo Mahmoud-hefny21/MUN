@@ -135,9 +135,12 @@ async function googleLogin(req, res, url) {
     check(!existing, 'This account needs board-assisted linking. Sign in with your original account or contact the board.', 409);
     const authoritativeEmail = email.endsWith('@gmail.com') || identity.hd === email.split('@').at(-1);
     const invite = authoritativeEmail ? await get('SELECT role,committee FROM mun_member_invites WHERE email=? AND created_at>now()-interval \'14 days\'', email) : null;
-    const result = await get(`INSERT INTO mun_members(id,email,name,photo,active,role,committee) VALUES (?,?,?,?,?,?,?)
+    // Roster members are activated with their official name, role, committee and position; an invite overrides the role.
+    const roster = authoritativeEmail ? await get('SELECT name,role,committee,position FROM mun_roster WHERE email=?', email) : null;
+    const grant = invite || roster;
+    const result = await get(`INSERT INTO mun_members(id,email,name,photo,active,role,committee,position) VALUES (?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET email=excluded.email RETURNING active`,
-      identity.sub, email, name, photo, Number(Boolean(invite)), invite?.role || 'Member', invite?.committee || '');
+      identity.sub, email, (roster?.name || name).slice(0, 60), photo, Number(Boolean(grant)), grant?.role || 'Member', grant?.committee || '', roster?.position || '');
     if (invite && result.active) await run('DELETE FROM mun_member_invites WHERE email=?', email);
     return result;
   });
@@ -757,6 +760,33 @@ export async function provisionPresident(subject) {
     check(!existing, 'An active President already exists.', 409);
     check((await run("UPDATE mun_members SET role='President', active=1 WHERE id=?", subject)).changes === 1, 'Google account has not registered.');
     await audit(subject, 'president.provision', subject);
+  });
+}
+// Replaces the club roster from the membership sheet: rows are { email, name, role, committee, position }.
+// Creates missing committees, and updates members who already signed in (never the President).
+export async function importRoster(rows) {
+  const clean = value => String(value ?? '').trim().replace(/\s+/g, ' ');
+  const entries = rows.map(row => ({
+    email: clean(row.email).toLowerCase(), name: clean(row.name).slice(0, 60), role: clean(row.role) || 'Member',
+    committee: clean(row.committee).slice(0, 60), position: clean(row.position).slice(0, 60)
+  })).filter(row => z.email().safeParse(row.email).success && row.name);
+  for (const row of entries) {
+    check(Object.hasOwn(rolePermissions, row.role) && row.role !== 'President', 'Unknown roster role: ' + row.role);
+  }
+  return transact(async () => {
+    for (const name of new Set(entries.map(row => row.committee).filter(Boolean))) {
+      await run('INSERT INTO mun_committees(name) VALUES (?) ON CONFLICT DO NOTHING', name);
+    }
+    await run('DELETE FROM mun_roster');
+    let updated = 0;
+    for (const row of entries) {
+      await run(`INSERT INTO mun_roster(email,name,role,committee,position) VALUES (?,?,?,?,?)
+        ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, committee=excluded.committee, position=excluded.position, updated_at=now()`,
+        row.email, row.name, row.role, row.committee, row.position);
+      updated += (await run(`UPDATE mun_members SET name=?, role=?, committee=?, position=?, active=1
+        WHERE lower(email)=? AND role<>'President'`, row.name, row.role, row.committee, row.position, row.email)).changes;
+    }
+    return { roster: entries.length, updatedMembers: updated };
   });
 }
 export { close as closeDatabase };

@@ -88,6 +88,11 @@
     CHECK (permissions <@ ARRAY['posts','points','learning','activities']::text[])
   );
   CREATE UNIQUE INDEX IF NOT EXISTS mun_custom_roles_lower ON mun_custom_roles(lower(name));
+  -- Official club roster (imported from the membership sheet). Listed emails are activated on first Google sign-in.
+  CREATE TABLE IF NOT EXISTS mun_roster (
+    email TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'Member', committee TEXT NOT NULL DEFAULT '',
+    position TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
   CREATE TABLE IF NOT EXISTS mun_member_invites (
     email TEXT PRIMARY KEY, role TEXT NOT NULL, committee TEXT NOT NULL,
     granted_by TEXT NOT NULL REFERENCES mun_members(id), created_at TIMESTAMPTZ NOT NULL DEFAULT now()

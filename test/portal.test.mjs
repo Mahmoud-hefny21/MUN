@@ -52,12 +52,12 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal(createHash('sha256').update(verifier).digest('base64url'), client.challenge);
     const payload = Buffer.from(JSON.stringify({
       iss: 'https://accounts.google.com', aud: 'fixture-client', nonce: client.nonce,
-      exp: Date.now() / 1000 + 600, sub: code, email: code + (code === 'invited' ? '@gmail.com' : '@example.test'), email_verified: true, name: code
+      exp: Date.now() / 1000 + 600, sub: code, email: code + (['invited', 'rostered', 'member2'].includes(code) ? '@gmail.com' : '@example.test'), email_verified: true, name: code
     })).toString('base64url');
     const token = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'test' })).toString('base64url') + '.' + payload;
     return Response.json({ id_token: token + '.' + sign('RSA-SHA256', Buffer.from(token), privateKey).toString('base64url') });
   };
-  const { startServer, provisionPresident } = await import('../server.mjs');
+  const { startServer, provisionPresident, importRoster } = await import('../server.mjs');
   const server = startServer();
   if (!server.listening) await once(server, 'listening');
   const base = 'http://127.0.0.1:' + server.address().port;
@@ -91,6 +91,23 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal(await login('owner'), undefined);
     await provisionPresident('owner');
     await assert.rejects(provisionPresident('owner'), /already exists/);
+    await assert.rejects(importRoster([{ email: 'x@gmail.com', name: 'X', role: 'President' }]), /Unknown roster role/);
+    assert.deepEqual(await importRoster([
+      { email: 'Rostered@gmail.com ', name: 'Rostered  Board Lead', role: 'Co-President', committee: 'Operations', position: 'Head of Operations' },
+      { email: 'member2@gmail.com', name: 'Roster Member', role: '', committee: 'Press and Media' },
+      { email: 'not-an-email', name: 'Ignored' }
+    ]), { roster: 2, updatedMembers: 0 });
+    const rostered = await (await get('/api/session', await login('rostered'))).json();
+    assert.equal(rostered.signedIn, true);
+    assert.equal(rostered.data.profile.name, 'Rostered Board Lead');
+    assert.equal(rostered.data.profile.role, 'Co-President');
+    assert.equal(rostered.data.profile.committee, 'Operations');
+    assert.equal(rostered.data.profile.position, 'Head of Operations');
+    assert.ok(rostered.data.permissions.includes('members'));
+    const plain = await (await get('/api/session', await login('member2'))).json();
+    assert.equal(plain.signedIn, true);
+    assert.equal(plain.data.profile.role, 'Member');
+    assert.deepEqual(plain.data.permissions, []);
     const owner = await login('owner');
     assert.equal(await login('delegate'), undefined);
     assert.equal((await post('member', { id: 'delegate', role: 'Member', active: '1' }, owner)).status, 200);
