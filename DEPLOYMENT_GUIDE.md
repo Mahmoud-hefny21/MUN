@@ -10,7 +10,7 @@ The existing GitHub commit and the current working tree are different versions. 
 
 Rollback the app to a previous known-good version only after checking schema compatibility. Keep additive tables in place. If compatibility fails, prefer forward repair and test it against a restored staging copy before changing production.
 
-The local callback is `http://localhost:3000/api/auth/google/callback`. The production callback is `https://mun-smoky.vercel.app/api/auth/google/callback`. Use the [Production environment template](.env.vercel.example) for Vercel. Set the existing database URL and Google client secret as sensitive values in the dashboard. Leave the development `.env` configured for localhost. Environment changes apply to new deployments.
+The local callback is `http://localhost:3000/api/auth/google/callback`. The production callback is `https://www.miumunal.org/api/auth/google/callback`. Use the [Production environment template](.env.vercel.example) for Vercel. Set the existing database URL and Google client secret as sensitive values in the dashboard. Leave the development `.env` configured for localhost. Environment changes apply to new deployments.
 
 Legacy projects can temporarily configure `GOOGLE_CALLBACK_URL` with the same-origin legacy path while changing the Google console. Before promoting, review the existing admin records. If the previous board owner was promoted solely by an environment variable, explicitly provision the verified, already registered account in the correct database before switching versions.
 
@@ -20,3 +20,7 @@ Legacy projects can temporarily configure `GOOGLE_CALLBACK_URL` with the same-or
 - Gemini terms prohibit use in apps likely to be accessed by under-18 users. Gemini is excluded from live provider selection here. GroqCloud has an 18+ customer requirement. Any Groq deployment needs a qualified organization operator and confirmation that downstream use, model terms and privacy are suitable. [Gemini terms](https://ai.google.dev/gemini-api/terms) · [Groq Services Agreement](https://console.groq.com/docs/legal/services-agreement) · [Groq rate limits](https://console.groq.com/docs/rate-limits)
 - OneSignal advertises a free tier for organizations. Subscription/delivery quotas, secure identity features and age/data terms still need plan-specific verification. [OneSignal pricing](https://onesignal.com/pricing)
 - Actual GitHub Actions and Neon usage, remaining quotas, backup retention, e-mail and storage provider eligibility need review before rollout.
+
+## Production domain
+
+The official domain is `https://www.miumunal.org`. The apex `miumunal.org` redirects to `www` (Vercel domain settings), and the old `mun-smoky.vercel.app` URL redirects there too (`vercel.json`). Production `APP_ORIGIN` and `GOOGLE_CALLBACK_URL` use the `www` origin. The Google OAuth client must list `https://www.miumunal.org/api/auth/google/callback`, and the OneSignal web configuration must use `https://www.miumunal.org` as its site URL.

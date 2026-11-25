@@ -235,7 +235,8 @@ function enablePush() {
 // (Safari, and Chrome in some cases) get the prompt on the member's first tap instead.
 let pushAutoTried = false;
 async function autoPush() {
-  if (pushAutoTried || !state?.pushPreference || state.pushPreference.enabled) return;
+  // Subscriptions belong to one origin: after a domain move, an account with push on still needs this browser subscribed.
+  if (pushAutoTried || !state?.pushPreference || (state.pushPreference.enabled && localStorage.getItem('mun-push-browser'))) return;
   if (!('Notification' in window) || Notification.permission === 'denied') return;
   if (munInstall.ios && !munInstall.standalone()) return;
   pushAutoTried = true;

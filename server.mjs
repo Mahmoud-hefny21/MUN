@@ -756,6 +756,14 @@ app.use(async (req, res) => {
         return respond(res, 503, { error: { code: 'DATABASE_UNAVAILABLE', message: 'Database unavailable.' } });
       }
     }
+    // SEO: robots.txt and sitemap.xml follow APP_ORIGIN, so they are right on localhost and in production.
+    if (req.method === 'GET' && (path === '/robots.txt' || path === '/sitemap.xml')) {
+      const robots = path === '/robots.txt';
+      res.writeHead(200, { 'Content-Type': robots ? 'text/plain; charset=utf-8' : 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+      return res.end(robots
+        ? `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /auth/\nDisallow: /push/\nSitemap: ${origin}/sitemap.xml\n`
+        : `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/</loc></url></urlset>\n`);
+    }
     if (req.method === 'GET' && Object.hasOwn(assets, path)) {
       const asset = loadAsset(path);
       res.setHeader('Cache-Control', asset.cache);

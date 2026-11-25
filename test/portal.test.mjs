@@ -81,6 +81,11 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
   }
   try {
     assert.match(await (await get('/')).text(), /id="logout"/);
+    const robots = await get('/robots.txt');
+    assert.equal(robots.status, 200);
+    const robotsText = await robots.text();
+    assert.ok(robotsText.includes('Disallow: /api/') && robotsText.includes('Sitemap: ' + origin + '/sitemap.xml'));
+    assert.ok((await (await get('/sitemap.xml')).text()).includes('<loc>' + origin + '/</loc>'));
     assert.match(await (await get('/app.js')).text(), /Continue with Google/);
     const pushWorker = await get('/push/onesignal/OneSignalSDKWorker.js');
     assert.match(pushWorker.headers.get('content-type'), /application\/javascript/);

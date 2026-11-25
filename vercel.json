@@ -2,6 +2,26 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "express",
   "buildCommand": "npm run build",
-  "git": { "deploymentEnabled": false },
-  "crons": [{ "path": "/api/cron/push", "schedule": "0 4 * * *" }]
+  "git": {
+    "deploymentEnabled": false
+  },
+  "crons": [
+    {
+      "path": "/api/cron/push",
+      "schedule": "0 4 * * *"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "mun-smoky.vercel.app"
+        }
+      ],
+      "destination": "https://www.miumunal.org/:path*",
+      "permanent": true
+    }
+  ]
 }
