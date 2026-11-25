@@ -198,6 +198,30 @@ function stopCamera() {
   camera = null;
 }
 
+// Notifications: one shared enable flow, used by the buttons and by autoPush.
+let enabling = null;
+function enablePush() {
+  enabling ||= (async () => {
+    if (!munPush.isReady()) await munPush.prepare();
+    await munPush.optIn();
+    state.pushPreference = await api('push/preference', { enabled: true });
+    if (document.querySelector('#welcome')) showWelcome(true);
+  })().finally(() => { enabling = null; });
+  return enabling;
+}
+// Ask for notification permission as soon as a member is signed in. Browsers that require a tap
+// (Safari, and Chrome in some cases) get the prompt on the member's first tap instead.
+let pushAutoTried = false;
+async function autoPush() {
+  if (pushAutoTried || !state?.pushPreference || state.pushPreference.enabled) return;
+  if (!('Notification' in window) || Notification.permission === 'denied') return;
+  if (munInstall.ios && !munInstall.standalone()) return;
+  pushAutoTried = true;
+  try { await munPush.prepare(); } catch { return; }
+  try { await enablePush(); }
+  catch { document.addEventListener('pointerup', () => { if (state) enablePush().catch(() => {}); }, { once: true, capture: true }); }
+}
+
 // First-visit welcome sheet: one tap to install the app and one to turn on notifications.
 const welcomeKey = 'mun-welcome-v1';
 const pushAvailable = () => Boolean(state?.pushPreference);
@@ -248,11 +272,7 @@ document.addEventListener('click', async event => {
   button.disabled = true;
   try {
     if (step === 'install') await munInstall.prompt();
-    if (step === 'push') {
-      if (!munPush.isReady()) await munPush.prepare();
-      await munPush.optIn();
-      state.pushPreference = await api('push/preference', { enabled: true });
-    }
+    if (step === 'push') await enablePush();
     showWelcome(true);
   } catch (error) {
     status.hidden = false;
@@ -395,6 +415,7 @@ async function loadSession() {
   // pwa.js loads after this file, so wire install updates once the session is in.
   munInstall.onChange(() => { if (document.querySelector('#welcome')) showWelcome(true); });
   showWelcome();
+  autoPush();
 }
 async function perform(control, operation) {
   if (busy) return;
