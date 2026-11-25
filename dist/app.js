@@ -263,4 +263,14 @@ content.addEventListener('submit', event => {
     if (action === 'publish') editingPost = '';
   });
 });
+const visualViewport = window.visualViewport;
+function updateKeyboardLayout() {
+  const editing = document.activeElement?.matches('textarea, input:not([type=radio]):not([type=checkbox])');
+  document.body.classList.toggle('keyboard-open', Boolean(
+    editing && visualViewport && visualViewport.scale === 1 && window.innerHeight - visualViewport.height > 120
+  ));
+}
+visualViewport?.addEventListener('resize', updateKeyboardLayout);
+document.addEventListener('focusin', updateKeyboardLayout);
+document.addEventListener('focusout', () => requestAnimationFrame(updateKeyboardLayout));
 loadSession();

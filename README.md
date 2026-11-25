@@ -15,4 +15,4 @@ The assistant serves prepared answers and official links by default. External ge
 
 Use a Node host with HTTPS. Build with `npm ci --omit=dev` and run `npm start`. Set `HOST=0.0.0.0`, `APP_ORIGIN` to the public HTTPS origin, and supply `DATABASE_URL` and credentials through the host's secret settings. Add the HTTPS origin followed by `/api/auth/google/callback` as another exact Google redirect URI. For a club-wide rollout, configure the Google OAuth audience for the intended users.
 
-Run integration checks with `npm.cmd test` or `npm test`. The tests use an isolated Postgres instance in memory and signed fixture Google responses.
+Run `npm ci` to restore development dependencies after a runtime-only install. Run integration checks with `npm.cmd test` or `npm test`. The tests use an isolated Postgres instance in memory and signed fixture Google responses.

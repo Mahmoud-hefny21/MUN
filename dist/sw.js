@@ -1,4 +1,4 @@
-const cacheName = 'mun-public-static-v1';
+const cacheName = 'mun-public-static-v2';
 const publicAssets = ['/offline.html', '/style.css', '/logo.jpg', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable.png', '/icons/apple.png'];
 
 self.addEventListener('install', event => {
@@ -20,6 +20,9 @@ self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).catch(async () => (await caches.open(cacheName)).match('/offline.html')));
   } else if (!url.search && publicAssets.includes(url.pathname)) {
-    event.respondWith(caches.open(cacheName).then(cache => cache.match(event.request)).then(cached => cached || fetch(event.request)));
+    const cached = () => caches.open(cacheName).then(cache => cache.match(event.request));
+    event.respondWith(url.pathname === '/style.css'
+      ? fetch(event.request).catch(cached)
+      : cached().then(response => response || fetch(event.request)));
   }
 });

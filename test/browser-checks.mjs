@@ -26,6 +26,12 @@ export async function verifyBrowser(base, session) {
         assert.equal(await nav.isVisible(), width < 768 && route !== 'admin');
         if (width < 768 && route !== 'admin') {
           assert.deepEqual(await nav.getByRole('link').allTextContents(), ['Home', 'Feed', 'Fantasy', 'AI Assistant', 'Profile']);
+          const dock = await nav.boundingBox();
+          assert.ok(Math.abs(dock.y + dock.height - 900) <= 1);
+          for (const tab of await nav.getByRole('link').all()) {
+            const target = await tab.boundingBox();
+            assert.ok(target.width >= 44 && target.height >= 44);
+          }
         }
         if (screenshotDir && [320, 390, 768, 1440].includes(width)) {
           await page.screenshot({ path: screenshotDir + '/' + route + '-' + width + '.png', fullPage: true });
@@ -33,8 +39,15 @@ export async function verifyBrowser(base, session) {
       }
     }
     await page.goto(base + '/#home');
+    await page.setViewportSize({ width: 320, height: 640 });
     await page.evaluate(() => { location.hash = 'assistant'; });
     await page.getByRole('textbox', { name: 'Your question' }).fill('rules of procedure');
+    assert.equal(await page.getByRole('navigation', { name: 'Member navigation' }).isVisible(), true);
+    await page.getByRole('button', { name: 'Ask assistant' }).scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const send = await page.getByRole('button', { name: 'Ask assistant' }).boundingBox();
+    const tabs = await page.getByRole('navigation', { name: 'Member navigation' }).boundingBox();
+    assert.ok(send.y + send.height <= tabs.y);
     await page.getByRole('button', { name: 'Ask assistant' }).click();
     await page.getByText('General Assembly Rules of Procedure', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'New chat' }).click();
