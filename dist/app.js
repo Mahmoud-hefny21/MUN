@@ -127,7 +127,7 @@ function assistant() {
       <button class="copy" data-copy="${index}">Copy</button>` : '<p class="typing" role="status">Thinking<span>.</span><span>.</span><span>.</span></p>'}</div>`).join('');
   return `<div class="chat"><div class="chat-head"><div><h1>MUN Assistant</h1><p>${ai ? 'Powered by AI · check important facts' : 'Club library'}</p></div>${conversation.length ? '<button data-new-chat>New chat</button>' : ''}</div>
     ${intro}<div class="chat-log" aria-live="polite">${log}</div>
-    <form class="chat-form" data-action="assistant"><label class="sr-only" for="chat-input">Your question</label><textarea id="chat-input" name="question" required maxlength="1000" rows="1" placeholder="Ask anything about MUN, debate or a country…"></textarea><button class="primary send" aria-label="Ask assistant">${icon('send')}</button></form></div>`;
+    <form class="chat-form" data-action="assistant"><label class="sr-only" for="chat-input">Your question</label><textarea id="chat-input" name="question" required maxlength="1000" rows="1" placeholder="Ask the MUN Assistant…"></textarea><button class="primary send" aria-label="Ask assistant">${icon('send')}</button></form></div>`;
 }
 async function ask(question) {
   const entry = { question, reply: null };
