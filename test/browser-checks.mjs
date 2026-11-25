@@ -38,7 +38,7 @@ export async function verifyBrowser(base, session, memberSession) {
         if (width < 768 && route !== 'admin') {
           assert.deepEqual(await nav.getByRole('link').allTextContents(), ['Home', 'Feed', 'Fantasy', 'Quiz', 'Menu']);
           const dock = await nav.boundingBox();
-          assert.ok(dock.y + dock.height <= 900 && 900 - (dock.y + dock.height) <= 24);
+          assert.ok(dock.y + dock.height <= 900 && 900 - (dock.y + dock.height) <= 34);
           for (const tab of await nav.getByRole('link').all()) {
             const target = await tab.boundingBox();
             assert.ok(target.width >= 44 && target.height >= 44);

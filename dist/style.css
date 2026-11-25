@@ -164,7 +164,7 @@ form button { justify-self: start; }
   .section-head { margin-bottom: 10px; }
 }
 @media (max-width: 767px) {
-  :root { --mobile-dock-height: 84px; }
+  :root { --mobile-dock-height: 94px; }
   html { scroll-padding-bottom: calc(var(--mobile-dock-height) + env(safe-area-inset-bottom, 0px)); }
   .sidebar { display: none; }
   main { margin-left: 0; }
@@ -189,7 +189,7 @@ form button { justify-self: start; }
     z-index: 3;
     left: max(10px, env(safe-area-inset-left));
     right: max(10px, env(safe-area-inset-right));
-    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 2px;
