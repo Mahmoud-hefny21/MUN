@@ -24,7 +24,7 @@ export async function createDatabase({ migrate = false } = {}) {
       ssl: { rejectUnauthorized: true },
       enableChannelBinding: useChannelBinding,
       connectionTimeoutMillis: 12000,
-      max: 5
+      max: 8
     });
     pool.on('error', error => console.error('Postgres pool error:', error.code || error.name));
     query = pool.query.bind(pool);

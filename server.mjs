@@ -185,65 +185,90 @@ async function dailyQuestion(date = today()) {
 }
 async function snapshot(member) {
   const date = today();
-  const postRows = await all('SELECT * FROM mun_posts WHERE committee IS NULL OR committee=? OR ?=1 ORDER BY pinned DESC, created DESC',
-    member.committee, Number(permissionsFor(member).includes('posts') && member.role !== 'Head'));
-  const votes = Object.fromEntries((await all('SELECT post, choice FROM mun_votes WHERE member=?', member.id)).map(row => [row.post, row.choice]));
-  const counts = new Map();
-  for (const row of await all('SELECT post, choice, COUNT(*)::integer AS total FROM mun_votes GROUP BY post, choice')) counts.set(row.post + ':' + row.choice, row.total);
-  const question = await dailyQuestion(date);
-  const answer = await get('SELECT correct, answer, explanation FROM mun_answers WHERE member=? AND day=?', member.id, date);
   const permissions = permissionsFor(member);
+  const can = permission => permissions.includes(permission);
   const monthStart = date.slice(0, 7) + '-01';
   const weekStart = new Date(date);
   weekStart.setUTCDate(weekStart.getUTCDate() - (weekStart.getUTCDay() + 6) % 7);
-  return {
-    profile: { id: member.id, name: member.name, committee: member.committee, position: member.position, photo: member.photo, role: member.role },
-    members: await all(`SELECT m.id, m.name, COALESCE(SUM(t.amount),0)::integer AS points,
+  const none = [];
+  // All reads are independent, so they run in parallel (one wave of round trips instead of ~20 sequential ones).
+  const pending = {
+    postRows: all('SELECT * FROM mun_posts WHERE committee IS NULL OR committee=? OR ?=1 ORDER BY pinned DESC, created DESC',
+      member.committee, Number(can('posts') && member.role !== 'Head')),
+    myVotes: all('SELECT post, choice FROM mun_votes WHERE member=?', member.id),
+    voteCounts: all('SELECT post, choice, COUNT(*)::integer AS total FROM mun_votes GROUP BY post, choice'),
+    question: dailyQuestion(date),
+    answer: get('SELECT correct, answer, explanation FROM mun_answers WHERE member=? AND day=?', member.id, date),
+    members: all(`SELECT m.id, m.name, COALESCE(SUM(t.amount),0)::integer AS points,
       SUM(CASE WHEN t.date>=? THEN t.amount ELSE 0 END)::integer AS week,
       SUM(CASE WHEN t.date>=? THEN t.amount ELSE 0 END)::integer AS month
       FROM mun_members m LEFT JOIN mun_transactions t ON m.id=t.member
       WHERE m.active=1 GROUP BY m.id`, weekStart.toISOString().slice(0,10), monthStart),
     // Everyone in the club: roster entries plus accounts, with the account's live values when it exists.
-    boardDirectory: permissions.includes('members') ? await all(`SELECT COALESCE(r.email, lower(m.email)) AS email,
+    directory: can('members') ? all(`SELECT COALESCE(r.email, lower(m.email)) AS email,
         COALESCE(m.name, r.name) AS name, COALESCE(m.role, r.role) AS role,
         COALESCE(NULLIF(m.committee, ''), r.committee, '') AS committee, COALESCE(NULLIF(m.position, ''), r.position, '') AS position,
         m.id IS NOT NULL AS signed_in, COALESCE(m.active, 1) AS active, r.email IS NOT NULL AS listed
       FROM mun_roster r FULL OUTER JOIN mun_members m ON lower(m.email) = r.email
-      ORDER BY lower(COALESCE(m.name, r.name))`) : [],
-    boardRoles: permissions.includes('members') ? [...Object.keys(rolePermissions).filter(role => role !== 'President' && (role !== 'Co-President' || member.role === 'President')),
-      ...(await all('SELECT name FROM mun_custom_roles ORDER BY name')).map(role => role.name)] : [],
-    // What each role can do, shown next to the role picker.
-    boardRoleAccess: permissions.includes('members') ? Object.fromEntries([...Object.entries(rolePermissions),
-      ...(await all('SELECT name, permissions FROM mun_custom_roles')).map(role => [role.name, Array.isArray(role.permissions) ? role.permissions : parse(role.permissions || '[]')])]) : {},
-    boardInvites: permissions.includes('members') ? await all('SELECT email,role FROM mun_member_invites WHERE created_at>now()-interval \'14 days\' ORDER BY created_at DESC LIMIT 50') : [],
-    committees: permissions.includes('members') || (permissions.includes('posts') && member.role !== 'Head') ? await all('SELECT name FROM mun_committees ORDER BY name') : [],
-    posts: postRows.map(post => {
-      const options = parse(post.options);
-      const manageable = permissions.includes('posts') && canManagePost(member, post);
-      // Poll percentages are public, before and after voting.
-      return { ...post, options, manageable, votes: options.map((_, choice) => counts.get(post.id + ':' + choice) || 0) };
-    }),
-    votes, transactions: await all('SELECT * FROM mun_transactions WHERE member=? ORDER BY sequence', member.id),
-    resources: await all('SELECT * FROM mun_resources ORDER BY id'),
-    activities: await all(`SELECT id,title,kind,starts_at,committee FROM mun_activities
+      ORDER BY lower(COALESCE(m.name, r.name))`) : none,
+    customRoles: can('members') ? all('SELECT name, permissions FROM mun_custom_roles ORDER BY name') : none,
+    invites: can('members') ? all("SELECT email,role FROM mun_member_invites WHERE created_at>now()-interval '14 days' ORDER BY created_at DESC LIMIT 50") : none,
+    committees: can('members') || (can('posts') && member.role !== 'Head') ? all('SELECT name FROM mun_committees ORDER BY name') : none,
+    transactions: all('SELECT * FROM mun_transactions WHERE member=? ORDER BY sequence', member.id),
+    resources: all('SELECT * FROM mun_resources ORDER BY id'),
+    activities: all(`SELECT id,title,kind,starts_at,committee FROM mun_activities
       WHERE starts_at>=now() AND (committee IS NULL OR committee=?) ORDER BY starts_at,id LIMIT 6`, member.committee),
-    attendance: await all(`SELECT a.title, a.kind, a.starts_at FROM mun_attendance p
+    attendance: all(`SELECT a.title, a.kind, a.starts_at FROM mun_attendance p
       JOIN mun_activities a ON a.id=p.activity WHERE p.member=? ORDER BY a.starts_at DESC,a.id LIMIT 30`, member.id),
-    boardActivities: permissions.includes('activities') ? await all('SELECT id,title,starts_at FROM mun_activities ORDER BY starts_at DESC,id LIMIT 30') : [],
-    notifications: await all(`SELECT e.id,e.kind,e.title,e.body,e.route,e.created_at,n.read_at
+    boardActivities: can('activities') ? all('SELECT id,title,starts_at FROM mun_activities ORDER BY starts_at DESC,id LIMIT 30') : none,
+    notifications: all(`SELECT e.id,e.kind,e.title,e.body,e.route,e.created_at,n.read_at
       FROM mun_notifications n JOIN mun_notification_events e ON e.id=n.event_id
       WHERE n.member=? AND (e.committee IS NULL OR e.committee=?)
       ORDER BY e.created_at DESC,e.id DESC LIMIT 30`, member.id, member.committee),
-    unreadNotifications: (await get(`SELECT COUNT(*)::integer AS total FROM mun_notifications n
+    unread: get(`SELECT COUNT(*)::integer AS total FROM mun_notifications n
       JOIN mun_notification_events e ON e.id=n.event_id
-      WHERE n.member=? AND n.read_at IS NULL AND (e.committee IS NULL OR e.committee=?)`, member.id, member.committee)).total,
+      WHERE n.member=? AND n.read_at IS NULL AND (e.committee IS NULL OR e.committee=?)`, member.id, member.committee),
+    quizBank: can('learning') ? all('SELECT id, question FROM mun_quizzes ORDER BY id DESC LIMIT 100') : none,
+    pushPreference: push.preference(member.id),
+    pushDelivery: protectedRoles.includes(member.role) ? push.deliverySummary() : null
+  };
+  const keys = Object.keys(pending);
+  const values = await Promise.all(Object.values(pending));
+  const data = Object.fromEntries(keys.map((key, index) => [key, values[index]]));
+  const votes = Object.fromEntries(data.myVotes.map(row => [row.post, row.choice]));
+  const counts = new Map(data.voteCounts.map(row => [row.post + ':' + row.choice, row.total]));
+  const { question, answer } = data;
+  const customPermissions = role => Array.isArray(role.permissions) ? role.permissions : parse(role.permissions || '[]');
+  return {
+    profile: { id: member.id, name: member.name, committee: member.committee, position: member.position, photo: member.photo, role: member.role },
+    members: data.members,
+    boardDirectory: data.directory,
+    boardRoles: can('members') ? [...Object.keys(rolePermissions).filter(role => role !== 'President' && (role !== 'Co-President' || member.role === 'President')),
+      ...data.customRoles.map(role => role.name)] : [],
+    // What each role can do, shown next to the role picker.
+    boardRoleAccess: can('members') ? Object.fromEntries([...Object.entries(rolePermissions), ...data.customRoles.map(role => [role.name, customPermissions(role)])]) : {},
+    boardInvites: data.invites,
+    committees: data.committees,
+    posts: data.postRows.map(post => {
+      const options = parse(post.options);
+      const manageable = can('posts') && canManagePost(member, post);
+      // Poll percentages are public, before and after voting.
+      return { ...post, options, manageable, votes: options.map((_, choice) => counts.get(post.id + ':' + choice) || 0) };
+    }),
+    votes, transactions: data.transactions,
+    resources: data.resources,
+    activities: data.activities,
+    attendance: data.attendance,
+    boardActivities: data.boardActivities,
+    notifications: data.notifications,
+    unreadNotifications: data.unread.total,
     quiz: question
       ? { id: question.id, date, question: question.question, options: question.options, reward: question.reward,
         result: answer ? { ...answer, sourceUrl: question.source_url } : undefined }
       : { date, result: answer },
-    quizBank: permissions.includes('learning') ? await all('SELECT id, question FROM mun_quizzes ORDER BY id DESC LIMIT 100') : [],
-    pushPreference: await push.preference(member.id),
-    pushDelivery: protectedRoles.includes(member.role) ? await push.deliverySummary() : null,
+    quizBank: data.quizBank,
+    pushPreference: data.pushPreference,
+    pushDelivery: data.pushDelivery,
     permissions, aiEnabled: providers.length > 0, photoUpload: photoUploadReady()
   };
 }

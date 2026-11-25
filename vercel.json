@@ -34,5 +34,8 @@
       "destination": "https://www.miumunal.org/:path+",
       "permanent": true
     }
+  ],
+  "regions": [
+    "fra1"
   ]
 }
