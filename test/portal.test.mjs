@@ -222,6 +222,40 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.ok(history.transactions.some(entry => entry.amount === 5 && entry.reason === 'Best position paper'));
     assert.equal((await post('points-history', { member: memberId }, member)).status, 403);
     assert.equal((await post('points-history', { member: 'nobody' }, owner)).status, 404);
+    // Role hierarchy: Heads stay inside their committee; nobody grants a role at or above their own.
+    assert.equal((await post('directory-save', { email: 'member2@gmail.com', name: 'Press Head', role: 'Head', committee: 'Press and Media' }, owner)).status, 200);
+    const headSession = await login('member2');
+    const headView = (await (await get('/api/session', headSession)).json()).data;
+    assert.deepEqual(headView.boardRoles, ['Member']);
+    assert.ok(headView.permissions.includes('members') && headView.permissions.includes('points'));
+    assert.ok(headView.boardDirectory.every(person => person.committee === 'Press and Media'));
+    assert.equal((await post('directory-save', { email: 'pm1@miuegypt.edu.eg', name: 'PM One', committee: 'Operations' }, headSession)).status, 200);
+    assert.ok((await (await get('/api/session', headSession)).json()).data.boardDirectory.some(person => person.email === 'pm1@miuegypt.edu.eg' && person.committee === 'Press and Media'));
+    assert.equal((await post('directory-save', { email: 'pm2@miuegypt.edu.eg', name: 'PM Two', role: 'High Board' }, headSession)).status, 400);
+    assert.equal((await post('directory-save', { email: 'ops1@miuegypt.edu.eg', name: 'Ops One', committee: 'Operations' }, owner)).status, 200);
+    assert.equal((await post('directory-remove', { email: 'ops1@miuegypt.edu.eg' }, headSession)).status, 403);
+    assert.equal((await post('directory-save', { email: 'ops1@miuegypt.edu.eg', name: 'Stolen' }, headSession)).status, 403);
+    assert.equal((await post('directory-remove', { email: 'rostered@gmail.com' }, headSession)).status, 403);
+    assert.equal((await post('directory-remove', { email: 'pm1@miuegypt.edu.eg' }, headSession)).status, 200);
+    assert.equal((await post('points', { member: (await (await get('/api/session', owner)).json()).data.profile.id, amount: '3', reason: 'Out of scope', operation: crypto.randomUUID() }, headSession)).status, 404);
+    assert.equal((await post('custom-role', { name: 'Head made role', permissions: ['posts'] }, headSession)).status, 403);
+    assert.equal((await post('committee', { name: 'Head committee' }, headSession)).status, 403);
+    // High Board: members, points and activities; cannot grant Upper Board or create roles.
+    assert.equal((await post('directory-save', { email: 'rostered@gmail.com', name: 'Rostered Board Lead', role: 'High Board', committee: 'Operations' }, owner)).status, 200);
+    const highView = (await (await get('/api/session', rosteredSession)).json()).data;
+    assert.deepEqual(highView.permissions, ['members', 'points', 'activities']);
+    assert.ok(!highView.boardRoles.includes('Upper Board') && !highView.boardRoles.includes('High Board') && !highView.boardRoles.includes('Head'));
+    assert.equal((await post('directory-save', { email: 'ub@miuegypt.edu.eg', name: 'UB', role: 'Upper Board' }, rosteredSession)).status, 400);
+    assert.equal((await post('custom-role', { name: 'High made role', permissions: ['points'] }, rosteredSession)).status, 403);
+    assert.equal((await post('directory-remove', { email: 'ops1@miuegypt.edu.eg' }, rosteredSession)).status, 200);
+    // Upper Board can do everything below it.
+    assert.equal((await post('directory-save', { email: 'rostered@gmail.com', name: 'Rostered Board Lead', role: 'Upper Board', committee: 'Operations' }, owner)).status, 200);
+    assert.deepEqual((await (await get('/api/session', rosteredSession)).json()).data.permissions, ['members', 'posts', 'points', 'learning', 'activities']);
+    assert.equal((await post('directory-save', { email: 'hb@miuegypt.edu.eg', name: 'HB', role: 'High Board' }, rosteredSession)).status, 200);
+    assert.equal((await post('directory-save', { email: 'ub2@miuegypt.edu.eg', name: 'UB2', role: 'Upper Board' }, rosteredSession)).status, 400);
+    assert.equal((await post('directory-remove', { email: 'hb@miuegypt.edu.eg' }, rosteredSession)).status, 200);
+    assert.equal((await post('directory-save', { email: 'rostered@gmail.com', name: 'Rostered Board Lead', role: 'Co-President', committee: 'Operations' }, owner)).status, 200);
+    assert.equal((await post('directory-save', { email: 'member2@gmail.com', name: 'Roster Member', role: 'Member', committee: 'Press and Media' }, owner)).status, 200);
     // Resources: add, edit, delete, and a signed upload ticket for PDFs.
     const plainMember = await login('member2');
     assert.equal((await post('resource', { title: 'Delegate handbook', category: 'Guide', body: 'Club handbook', url: 'https://res.cloudinary.com/fixture-cloud/raw/upload/v1/mun/resources/handbook.pdf' }, plainMember)).status, 403);

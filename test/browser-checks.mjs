@@ -87,7 +87,10 @@ export async function verifyBrowser(base, session, memberSession) {
     await page.locator('.member-row').first().locator('summary').click();
     await page.locator('.member-row').first().locator('.access-chips').waitFor();
     await page.locator('.member-row').first().getByRole('button', { name: 'Points history' }).click();
-    await page.locator('.member-row').first().locator('.row-history .history-head').waitFor();
+    await page.locator('#modal .history-head').waitFor();
+    if (screenshotDir) await page.screenshot({ path: screenshotDir + '/history-popup-390.png' });
+    await page.getByRole('button', { name: 'Close' }).click();
+    assert.equal(await page.locator('#modal').count(), 0);
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/member-edit-320.png', fullPage: true });
     await boardSections.getByRole('link', { name: 'Feed & polls' }).click();
     await boardSections.getByRole('link', { name: 'Roles & access' }).click();

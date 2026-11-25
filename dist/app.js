@@ -311,15 +311,16 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape' && do
 
 const can = permission => state.permissions.includes(permission);
 // Points history: members matching a name search, and one member's full history rendered into a box.
+const scopedMembers = () => state.scope ? state.members.filter(item => item.committee === state.scope) : state.members;
 const historyMatches = query => {
   const q = query.trim().toLowerCase();
-  const list = [...state.members].filter(item => !q || item.name.toLowerCase().includes(q))
+  const list = [...scopedMembers()].filter(item => !q || item.name.toLowerCase().includes(q))
     .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name)).slice(0, q ? 12 : 6);
   return list.map(item => `<button class="pick" data-history="${esc(item.id)}"><span>${esc(item.name)}</span><span class="count">${item.points} pts</span></button>`).join('')
     || '<p class="hint">No member matches that name.</p>';
 };
 async function showHistory(button) {
-  const box = button.closest('.member-row')?.querySelector('.row-history') || content.querySelector('#points-history');
+  const box = button.closest('.member-row') ? openModal('Points history').querySelector('.modal-body') : content.querySelector('#points-history');
   if (!box) return;
   content.querySelectorAll('.pick.selected').forEach(item => item.classList.remove('selected'));
   if (button.classList.contains('pick')) button.classList.add('selected');
@@ -331,6 +332,22 @@ async function showHistory(button) {
       (transactions.length ? `<ul class="ranking">${transactions.map(entry => `<li><span class="${entry.amount > 0 ? 'plus' : 'minus'}">${entry.amount > 0 ? '+' : ''}${entry.amount}</span><span>${esc(entry.reason)}<br><small>${esc(entry.date)} · ${esc(entry.by)}</small></span></li>`).join('')}</ul>` : '<p>No points recorded for this member yet.</p>');
   } catch (error) { box.innerHTML = `<p class="notice">${esc(error.message)}</p>`; }
 }
+// Small popup used for details that would otherwise make the page long.
+function openModal(title) {
+  closeModal();
+  const backdrop = document.createElement('div');
+  backdrop.id = 'modal';
+  backdrop.className = 'sheet-backdrop';
+  backdrop.innerHTML = `<section class="sheet modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">${esc(title)}</h2><button class="modal-close" data-close-modal aria-label="Close">✕</button></div><div class="modal-body history-box" aria-live="polite"></div></section>`;
+  document.body.append(backdrop);
+  backdrop.querySelector('[data-close-modal]').focus();
+  return backdrop;
+}
+function closeModal() { document.querySelector('#modal')?.remove(); }
+document.addEventListener('click', event => {
+  if (event.target.id === 'modal' || event.target.closest('[data-close-modal]')) closeModal();
+});
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
 function admin() {
   const intro = `<a class="back-link" href="#menu">${icon('chevron')} Back</a>` + heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
   if (!state.permissions.length) return intro + '<div class="card"><p>This workspace is available to authorized board members.</p></div>';
@@ -341,7 +358,7 @@ function admin() {
       <label>Title<input name="title" maxlength="100" required value="${esc(editing?.title)}"></label><label>Message<textarea name="body" maxlength="1500" required>${esc(editing?.body)}</textarea></label>
       <label>Poll choices (one per line)<textarea name="options" maxlength="400">${esc(editing?.options.join('\n'))}</textarea></label><button class="primary">${editing ? 'Save changes' : 'Publish'}</button></form>${editing ? '<button data-cancel-edit>Cancel editing</button>' : ''}</section>
       <section class="card stack"><h2>Manage posts</h2>${postOrder().filter(post => post.manageable).map(post => `<div class="list-row"><span class="list-main"><strong>${esc(post.title)}</strong><small>${esc(post.type)}${post.pinned ? ' · Pinned' : ''} · ${timeAgo(post.created)}</small></span><span class="row-actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button class="danger" data-delete="${esc(post.id)}">Delete</button></span></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
-  const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${state.members.map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>
+  const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${scopedMembers().map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>
     <section class="card stack"><h2>Member points history</h2><p class="hint">Search any member to see every point they earned or lost, and who recorded it.</p><input id="history-search" type="search" placeholder="Search a member by name" aria-label="Search a member by name" autocomplete="off"><div id="history-results" class="pick-list">${historyMatches('')}</div><div id="points-history" class="history-box" aria-live="polite"></div></section>` : '';
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
     <section class="card stack"><h2>Schedule a quiz</h2>${state.quizBank.length ? `<form data-action="schedule-quiz"><label>Question<select name="question" required>${state.quizBank.map(item => `<option value="${item.id}">${esc(item.question)}</option>`).join('')}</select></label><label>Cairo date<input type="date" name="date" min="${esc(state.quiz.date)}" required></label><label>Reward<select name="reward"><option>0</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label>Source URL<input type="url" name="source" required maxlength="500"></label><button class="primary">Schedule quiz</button></form>` : '<p>Add a question to the quiz bank before scheduling.</p>'}</section>
@@ -375,7 +392,7 @@ function admin() {
     return `<details class="member-row" data-search="${esc((person.name + ' ' + person.email + ' ' + person.position).toLowerCase())}" data-committee="${esc(person.committee)}"><summary>${avatar(person)}<span class="list-main"><strong>${esc(shortName(person.name))}</strong><small>${esc(person.committee || 'No committee')}${person.position ? ' · ' + esc(person.position) : ''}</small></span><span class="dot ${tone}" title="${status}"></span><span class="badge${fullAccess(person.role) ? ' board' : ''}">${esc(fullAccess(person.role) ? 'Full access' : person.role)}</span>${icon('chevron')}</summary>
       <dl class="member-details">${detail('Full name', person.name)}${detail('Email', person.email)}${detail('Committee', person.committee)}${detail('Position', person.position)}${detail('Role', person.role)}${detail('Status', status)}</dl>
       ${locked ? '<p class="hint">Full-access account. Only the President can change it.</p>' : `<form class="member-form" data-action="directory-save"><input type="hidden" name="email" value="${esc(person.email)}"><div class="form-grid"><label>Full name<input name="name" required maxlength="60" value="${esc(person.name)}"></label><label>Role<select name="role">${roleOptions(person.role)}</select></label><label>Committee<select name="committee">${committeeOptions(person.committee)}</select></label><label>Position<input name="position" maxlength="60" value="${esc(person.position)}" placeholder="Optional"></label></div><div class="access"><span class="access-title">Access with this role</span><div class="access-chips">${accessChips(person.role)}</div></div><button class="primary">${person.active ? 'Save member' : 'Restore member'}</button></form>
-      ${person.id && can('points') ? `<button class="history-btn" data-history="${esc(person.id)}">${icon('chart')} Points history</button><div class="history-box row-history" aria-live="polite"></div>` : ''}
+      ${person.id && can('points') ? `<button class="history-btn" data-history="${esc(person.id)}">${icon('chart')} Points history</button>` : ''}
       ${person.active ? `<button class="danger remove-member" data-remove-member="${esc(person.email)}">Remove member</button>` : ''}`}</details>`;
   };
   const counts = directory.reduce((all, person) => { if (person.active) all[person.committee || ''] = (all[person.committee || ''] || 0) + 1; return all; }, {});
@@ -389,14 +406,14 @@ function admin() {
     <label>Role<select name="role">${state.boardRoles.map(role => `<option>${esc(role)}</option>`).join('')}</select></label>
     <label>Committee<select name="committee"><option value="">Unassigned</option>${state.committees.map(item => `<option>${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Save role by email</button></form>
     ${state.boardInvites.length ? '<h3 class="sub-head">Pending invitations</h3>' : ''}${state.boardInvites.map(invite => `<form class="list-row" data-action="member-invite-revoke"><span class="list-main"><strong>${esc(invite.email)}</strong><small>${esc(invite.role)}</small></span><input type="hidden" name="email" value="${esc(invite.email)}"><button class="danger">Revoke invitation</button></form>`).join('')}
-    </section><section class="card stack"><h2>Create a role</h2><form data-action="custom-role"><label>Role name<input name="name" maxlength="40" required></label>
-    <fieldset><legend>Club-wide permissions</legend>${[['posts','Manage feed and polls'],['points','Adjust points'],['learning','Manage quizzes and resources'],['activities','Manage activities and attendance']].map(([key, label]) => `<label class="choice"><input type="checkbox" name="permissions" value="${key}">${label}</label>`).join('')}</fieldset><button class="primary">Create role</button></form></section>` : '';
+    </section>${['President', 'Co-President', 'Upper Board'].includes(state.profile.role) ? `<section class="card stack"><h2>Create a role</h2><form data-action="custom-role"><label>Role name<input name="name" maxlength="40" required></label>
+    <fieldset><legend>Club-wide permissions</legend>${[['posts','Manage feed and polls'],['points','Adjust points'],['learning','Manage quizzes and resources'],['activities','Manage activities and attendance']].map(([key, label]) => `<label class="choice"><input type="checkbox" name="permissions" value="${key}">${label}</label>`).join('')}</fieldset><button class="primary">Create role</button></form></section>` : ''}` : '';
   const attendanceActivities = state.boardActivities.filter(item => Date.parse(item.starts_at) <= Date.now());
   const activityPanel = can('activities') ? `<section class="card stack"><h2>Publish activity</h2>
-      <form data-action="activity"><label>Title<input name="title" required maxlength="100"></label><label>Type<select name="kind"><option>Event</option><option>Training</option><option>Competition</option><option>Challenge</option><option>Organizing</option></select></label><label>Start time in your device timezone<input name="starts" type="datetime-local" required></label><label>Audience<select name="committee"><option value="">Entire club</option>${state.committees.map(item => `<option>${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Publish activity</button></form>
-      </section><section class="card stack"><h2>Record attendance</h2>${attendanceActivities.length ? `<form data-action="attendance"><label>Activity<select name="activity" required>${attendanceActivities.map(item => `<option value="${esc(item.id)}">${esc(item.title)} · ${esc(clubTime(item.starts_at))} Cairo</option>`).join('')}</select></label><label>Member<select name="member" required>${state.members.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Record attendance</button></form>` : '<p>No activities have started yet. Attendance becomes available when an activity starts.</p>'}</section>` : '';
+      <form data-action="activity"><label>Title<input name="title" required maxlength="100"></label><label>Type<select name="kind"><option>Event</option><option>Training</option><option>Competition</option><option>Challenge</option><option>Organizing</option></select></label><label>Start time in your device timezone<input name="starts" type="datetime-local" required></label><label>Audience<select name="committee">${state.scope ? '' : '<option value="">Entire club</option>'}${state.committees.map(item => `<option>${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Publish activity</button></form>
+      </section><section class="card stack"><h2>Record attendance</h2>${attendanceActivities.length ? `<form data-action="attendance"><label>Activity<select name="activity" required>${attendanceActivities.map(item => `<option value="${esc(item.id)}">${esc(item.title)} · ${esc(clubTime(item.starts_at))} Cairo</option>`).join('')}</select></label><label>Member<select name="member" required>${scopedMembers().map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Record attendance</button></form>` : '<p>No activities have started yet. Attendance becomes available when an activity starts.</p>'}</section>` : '';
   const delivery = state.pushDelivery ? `<section class="card stack"><h2>Push delivery</h2><p>Last 24 hours. Accepted messages are tracked by OneSignal.</p>${state.pushDelivery.map(item => `<p>${esc(item.state)} · ${item.count}</p>`).join('') || '<p>No messages queued.</p>'}</section>` : '';
-  const committeePanel = can('members') ? '<section class="card stack"><h2>Add committee</h2><form data-action="committee"><label>Name<input name="name" maxlength="60" required></label><button class="primary">Add committee</button></form></section>' : '';
+  const committeePanel = can('members') && !state.scope ? '<section class="card stack"><h2>Add committee</h2><form data-action="committee"><label>Name<input name="name" maxlength="60" required></label><button class="primary">Add committee</button></form></section>' : '';
   const sections = [
     { id: 'members', label: 'Members', content: memberPanel + `<div class="stack">${addMemberPanel}${committeePanel}</div>` },
     { id: 'roles', label: 'Roles & access', content: rolePanel },
