@@ -14,6 +14,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     AI_ENABLED: String(testAI), AI_PRIMARY_PROVIDER: 'gemini',
     GEMINI_API_KEY: 'fixture-gemini', GEMINI_MODEL: 'fixture',
     GROQ_API_KEY: 'fixture-groq', GROQ_MODEL: 'fixture',
+    CLOUDINARY_CLOUD_NAME: 'fixture-cloud', CLOUDINARY_API_KEY: 'fixture-key', CLOUDINARY_API_SECRET: 'fixture-secret',
     GOOGLE_CLIENT_ID: 'fixture-client', GOOGLE_CLIENT_SECRET: 'fixture-secret', GOOGLE_CALLBACK_URL: origin + '/api/auth/google/callback'
   });
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -33,6 +34,14 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
       return aiMode === 'fallback'
         ? Response.json({ choices: [{ message: { content: 'Fallback answer [1]' } }] })
         : new Response(null, { status: 503 });
+    }
+    if (url === 'https://api.cloudinary.com/v1_1/fixture-cloud/image/upload') {
+      const form = options.body;
+      const signed = ['folder', 'invalidate', 'overwrite', 'public_id', 'timestamp'].map(key => key + '=' + form.get(key)).join('&');
+      assert.equal(form.get('api_key'), 'fixture-key');
+      assert.equal(form.get('signature'), createHash('sha1').update(signed + 'fixture-secret').digest('hex'));
+      assert.match(form.get('file'), /^data:image\/jpeg;base64,/);
+      return Response.json({ secure_url: 'https://res.cloudinary.com/fixture-cloud/image/upload/v1/mun/members/' + form.get('public_id') + '.jpg' });
     }
     if (url === 'https://www.googleapis.com/oauth2/v3/certs') {
       return Response.json({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test' }] });
@@ -103,6 +112,11 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
       assert.equal((await post('assistant/library', { question: 'rules of procedure' }, member)).status, 200);
     }
     assert.equal((await post('profile', { name: 'Delegate', photo: '', role: 'President' }, member)).status, 400);
+    assert.equal((await post('profile-photo', { image: 'data:text/html;base64,PHNjcmlwdD4=' }, member)).status, 400);
+    assert.equal((await post('profile-photo', { image: 'data:image/jpeg;base64,' + 'A'.repeat(500000) }, member)).status, 413);
+    const uploaded = await (await post('profile-photo', { image: 'data:image/jpeg;base64,/9j/4AAQ' }, member)).json();
+    assert.match(uploaded.data.profile.photo, /^https:\/\/res\.cloudinary\.com\/fixture-cloud\//);
+    assert.equal((await post('profile-photo', { remove: true }, member)).status, 200);
     const poll = { type: 'Poll', title: 'Workshop topic', body: 'Choose a subject', options: 'Debate\nResearch' };
     assert.equal((await post('publish', poll, member)).status, 403);
     assert.equal((await post('publish', poll, owner, 'https://other.example')).status, 403);

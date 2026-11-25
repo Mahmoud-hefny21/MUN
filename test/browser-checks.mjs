@@ -10,7 +10,7 @@ export async function verifyBrowser(base, session, memberSession) {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const widths = [320, 360, 375, 390, 414, 430, 768, 1024, 1280, 1440, 1920, 2560];
-  const routes = { home: /Welcome/, feed: /Club Feed/, fantasy: /Fantasy/, assistant: /MUN Assistant/, profile: /My Profile/, quiz: /Daily Quiz/, resources: /Resources/, notifications: /Inbox/, admin: /Board Workspace/ };
+  const routes = { home: /Welcome/, feed: /Club Feed/, fantasy: /Fantasy/, assistant: /MUN Assistant/, profile: /My Profile/, quiz: /Daily Quiz/, resources: /Resources/, notifications: /Inbox/, menu: /^Menu$/, admin: /Board Workspace/ };
   const screenshotDir = process.env.MUN_SCREENSHOTS;
   if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
   try {
@@ -25,9 +25,9 @@ export async function verifyBrowser(base, session, memberSession) {
         const nav = page.getByRole('navigation', { name: 'Member navigation' });
         assert.equal(await nav.isVisible(), width < 768 && route !== 'admin');
         if (width < 768 && route !== 'admin') {
-          assert.deepEqual(await nav.getByRole('link').allTextContents(), ['Home', 'Feed', 'Fantasy', 'AI Assistant', 'Profile']);
+          assert.deepEqual(await nav.getByRole('link').allTextContents(), ['Home', 'Feed', 'Fantasy', 'Quiz', 'Menu']);
           const dock = await nav.boundingBox();
-          assert.ok(Math.abs(dock.y + dock.height - 900) <= 1);
+          assert.ok(dock.y + dock.height <= 900 && 900 - (dock.y + dock.height) <= 16);
           for (const tab of await nav.getByRole('link').all()) {
             const target = await tab.boundingBox();
             assert.ok(target.width >= 44 && target.height >= 44);
@@ -84,6 +84,8 @@ export async function verifyBrowser(base, session, memberSession) {
     await context.setOffline(false);
     await page.getByRole('link', { name: 'Try again' }).click();
     await page.getByRole('heading', { name: /Welcome/ }).waitFor();
+    await page.evaluate(() => { location.hash = 'menu'; });
+    await page.getByRole('link', { name: /My Profile/ }).first().waitFor();
     await page.getByRole('button', { name: 'Sign out' }).click();
     await page.getByRole('link', { name: 'Continue with Google' }).waitFor();
     await context.addCookies([{ name: 'mun_session', value: memberSession.split('=')[1], url: base, httpOnly: true }]);
@@ -98,6 +100,12 @@ export async function verifyBrowser(base, session, memberSession) {
     await page.getByText(/Correct. You earned 3 points/).waitFor();
     await page.evaluate(() => { location.hash = 'profile'; });
     await page.getByRole('heading', { name: 'My Profile' }).waitFor();
+    await page.locator('#photo-file').setInputFiles({ name: 'me.png', mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') });
+    await page.getByRole('img', { name: 'New profile photo preview' }).waitFor();
+    await page.getByRole('button', { name: 'Save photo' }).click();
+    await page.getByRole('status').filter({ hasText: 'Profile photo saved.' }).waitFor();
+    assert.match(await page.locator('.photo-editor img.avatar').getAttribute('src'), /^https:\/\/res\.cloudinary\.com\//);
     assert.equal(await page.locator('#content a[href="#admin"]').count(), 0);
     for (const route of ['admin', 'admin/roles']) {
       await page.evaluate(hash => { location.hash = hash; }, route);

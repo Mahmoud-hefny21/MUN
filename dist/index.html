@@ -14,28 +14,47 @@
   <script src="app.js" defer></script>
 </head>
 <body class="signed-out">
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-feed" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v7a4 4 0 0 1-8 0zM8 6H4v1a4 4 0 0 0 4 4m8-5h4v1a4 4 0 0 1-4 4m-4 4v4m-4 0h8"/></symbol>
+    <symbol id="i-quiz" viewBox="0 0 24 24"><path d="m9 11 3 3 8-8"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m11 3 1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9zM19 14l.8 2.2 2.2.8-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2zM19 18v3H6a2 2 0 0 1-2-2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 6 3 8 3 8H3s3-2 3-8M10 21h4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 4.6-3.4 8-8 9-4.6-1-8-4.4-8-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 16l-4-4 4-4M6 12h10"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-7"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  </svg>
   <aside class="sidebar">
     <a class="brand" href="#home"><img src="logo.jpg" alt=""><span>MIU MUN <small>&amp; ARAB LEAGUE</small></span></a>
     <nav aria-label="Club navigation">
-      <a href="#home"><span aria-hidden="true">⌂</span> Overview</a>
-      <a href="#feed"><span aria-hidden="true">▤</span> Club Feed</a>
-      <a href="#fantasy"><span aria-hidden="true">♜</span> Fantasy</a>
-      <a href="#assistant"><span aria-hidden="true">✧</span> MUN Assistant</a>
-      <a href="#resources"><span aria-hidden="true">▥</span> Resources</a>
-      <a href="#quiz"><span aria-hidden="true">◈</span> Daily Quiz</a>
+      <a href="#home"><svg class="i"><use href="#i-home"/></svg> Overview</a>
+      <a href="#feed"><svg class="i"><use href="#i-feed"/></svg> Club Feed</a>
+      <a href="#fantasy"><svg class="i"><use href="#i-trophy"/></svg> Fantasy</a>
+      <a href="#assistant"><svg class="i"><use href="#i-spark"/></svg> MUN Assistant</a>
+      <a href="#resources"><svg class="i"><use href="#i-book"/></svg> Resources</a>
+      <a href="#quiz"><svg class="i"><use href="#i-quiz"/></svg> Daily Quiz</a>
     </nav>
-    <div class="side-bottom"><a id="board-link" href="#admin" hidden><span aria-hidden="true">⚙</span> Board workspace</a><a href="#profile" class="account"><span class="avatar" id="initials"></span><span id="account-name"></span></a></div>
+    <div class="side-bottom"><a id="board-link" href="#admin" hidden><svg class="i"><use href="#i-shield"/></svg> Board workspace</a><a href="#profile" class="account"><span class="avatar" id="initials"></span><span id="account-name"></span></a></div>
   </aside>
   <main>
-    <header class="topbar"><a href="#home" class="compact-brand"><img src="/logo.jpg" width="36" height="36" alt="MIU MUN home"></a><span id="crumb">Club portal / Overview</span><a id="inbox-link" href="#notifications">Inbox</a><button id="logout" type="button">Sign out</button></header>
+    <header class="topbar"><a href="#home" class="compact-brand"><img src="/logo.jpg" width="36" height="36" alt="MIU MUN home"></a><span id="crumb">Club portal / Overview</span><a id="inbox-link" href="#notifications" aria-label="Inbox"><svg class="i"><use href="#i-bell"/></svg><span class="inbox-text">Inbox</span><span id="inbox-count" hidden></span></a><button id="logout" type="button">Sign out</button></header>
     <div id="content"></div>
   </main>
+  <a class="ai-fab" href="#assistant" aria-label="Open MUN Assistant" title="MUN Assistant"><svg class="i"><use href="#i-spark"/></svg></a>
   <nav class="mobile-tabs" aria-label="Member navigation">
-    <a href="#home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3zM9 20v-6h6v6"/></svg>Home</a>
-    <a href="#feed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8M8 16h5"/></svg>Feed</a>
-    <a href="#fantasy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v8a4 4 0 0 1-8 0zM8 6H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4m-4 4v4m-4 0h8"/></svg>Fantasy</a>
-    <a href="#assistant"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5z"/></svg>AI Assistant</a>
-    <a href="#profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/></svg>Profile</a>
+    <a href="#home"><svg class="i"><use href="#i-home"/></svg>Home</a>
+    <a href="#feed"><svg class="i"><use href="#i-feed"/></svg>Feed</a>
+    <a href="#fantasy"><svg class="i"><use href="#i-trophy"/></svg>Fantasy</a>
+    <a href="#quiz"><svg class="i"><use href="#i-quiz"/></svg>Quiz</a>
+    <a href="#menu"><svg class="i"><use href="#i-menu"/></svg>Menu</a>
   </nav>
   <aside id="app-update" hidden><button type="button">Reload for update</button></aside>
   <script src="/pwa.js" defer></script>

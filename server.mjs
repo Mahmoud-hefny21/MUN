@@ -226,15 +226,15 @@ async function snapshot(member) {
     quizBank: permissions.includes('learning') ? await all('SELECT id, question FROM mun_quizzes ORDER BY id DESC LIMIT 100') : [],
     pushPreference: await push.preference(member.id),
     pushDelivery: member.role === 'President' ? await push.deliverySummary() : null,
-    permissions, aiEnabled: providers.length > 0
+    permissions, aiEnabled: providers.length > 0, photoUpload: photoUploadReady()
   };
 }
-async function bodyFrom(req) {
+async function bodyFrom(req, limit = 16384) {
   let size = 0;
   const chunks = [];
   for await (const chunk of req) {
     size += chunk.length;
-    check(size <= 16384, 'Request is too large.', 413);
+    check(size <= limit, 'Request is too large.', 413);
     chunks.push(chunk);
   }
   try {
@@ -260,6 +260,27 @@ async function notify(id, kind, title, route, recipient = null, committee = null
 }
 function lines(value, max) {
   return [...new Set(clean(value, max, 'choices', true).split(/\r?\n/).map(item => item.trim()).filter(Boolean))];
+}
+// Profile photos: the browser sends a 512px JPEG; the server signs the upload so the Cloudinary secret never reaches clients.
+const photoLimit = 400000;
+const cloudinary = { cloud: env.CLOUDINARY_CLOUD_NAME, key: env.CLOUDINARY_API_KEY, secret: env.CLOUDINARY_API_SECRET };
+const photoUploadReady = () => Boolean(cloudinary.cloud && cloudinary.key && cloudinary.secret);
+async function uploadPhoto(memberId, image) {
+  check(photoUploadReady(), 'Photo uploads are not set up yet.', 503);
+  const params = { folder: 'mun/members', invalidate: 'true', overwrite: 'true', public_id: digest(memberId).slice(0, 24), timestamp: String(Math.floor(Date.now() / 1000)) };
+  const signed = Object.keys(params).sort().map(key => key + '=' + params[key]).join('&');
+  const form = new FormData();
+  for (const [key, value] of Object.entries(params)) form.append(key, value);
+  form.append('file', image);
+  form.append('api_key', cloudinary.key);
+  form.append('signature', createHash('sha1').update(signed + cloudinary.secret).digest('hex'));
+  let result;
+  try {
+    const response = await fetch('https://api.cloudinary.com/v1_1/' + encodeURIComponent(cloudinary.cloud) + '/image/upload', { method: 'POST', body: form, signal: AbortSignal.timeout(20000) });
+    result = response.ok ? await response.json() : null;
+  } catch { result = null; }
+  check(typeof result?.secure_url === 'string' && result.secure_url.startsWith('https://res.cloudinary.com/'), 'The photo could not be uploaded. Try again.', 502);
+  return result.secure_url;
 }
 async function mutate(path, member, body) {
   if (path === 'activity') {
@@ -300,6 +321,17 @@ async function mutate(path, member, body) {
   if (path === 'notifications-read-all') {
     await run('UPDATE mun_notifications SET read_at=now() WHERE member=? AND read_at IS NULL', member.id);
     return 'Inbox marked as read.';
+  }
+  if (path === 'profile-photo') {
+    if (body.remove === true) {
+      await run('UPDATE mun_members SET photo=? WHERE id=?', '', member.id);
+      return 'Profile photo removed.';
+    }
+    check(typeof body.image === 'string' && body.image.length <= photoLimit &&
+      /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(body.image), 'Choose a valid photo.');
+    const photo = await uploadPhoto(member.id, body.image);
+    await run('UPDATE mun_members SET photo=? WHERE id=?', photo, member.id);
+    return 'Profile photo saved.';
   }
   if (path === 'profile') {
     const profile = profileUpdate.safeParse(body);
@@ -589,7 +621,7 @@ app.use(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.onesignal.com; connect-src 'self' https://*.onesignal.com; frame-src https://*.onesignal.com; worker-src 'self'; img-src 'self' https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.onesignal.com; connect-src 'self' https://*.onesignal.com; frame-src https://*.onesignal.com; worker-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   try {
     const url = new URL(req.url, origin);
     const path = url.pathname;
@@ -632,7 +664,7 @@ app.use(async (req, res) => {
       return respond(res, 200, { signedIn: false });
     }
     check(req.headers['content-type']?.split(';')[0] === 'application/json', 'Send a JSON body.', 415);
-    const data = await bodyFrom(req);
+    const data = await bodyFrom(req, path === '/api/profile-photo' ? photoLimit + 1024 : 16384);
     const currentMember = await memberFor(req);
     check(currentMember, 'Sign in with Google to continue.', 401);
     if (path === '/api/assistant') return respond(res, 200, await askAssistant(currentMember, data));
