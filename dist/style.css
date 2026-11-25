@@ -164,7 +164,7 @@ form button { justify-self: start; }
   .section-head { margin-bottom: 10px; }
 }
 @media (max-width: 767px) {
-  :root { --mobile-dock-height: 94px; }
+  :root { --mobile-dock-height: 68px; }
   html { scroll-padding-bottom: calc(var(--mobile-dock-height) + env(safe-area-inset-bottom, 0px)); }
   .sidebar { display: none; }
   main { margin-left: 0; }
@@ -189,19 +189,19 @@ form button { justify-self: start; }
     z-index: 3;
     left: max(10px, env(safe-area-inset-left));
     right: max(10px, env(safe-area-inset-right));
-    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 2px;
-    padding: 6px;
+    padding: 4px;
     border: 1px solid #2c3354;
-    border-radius: 22px;
+    border-radius: 20px;
     background: rgba(20, 26, 56, .94);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
   }
-  .mobile-tabs a { min-height: 54px; min-width: 0; justify-content: center; flex-direction: column; gap: 3px; padding: 4px 2px; border: 0; border-radius: 16px; text-align: center; font-size: .7rem; font-weight: 600; line-height: 1.15; }
+  .mobile-tabs a { min-height: 48px; min-width: 0; justify-content: center; flex-direction: column; gap: 2px; padding: 3px 2px; border: 0; border-radius: 16px; text-align: center; font-size: .66rem; font-weight: 600; line-height: 1.15; }
   .mobile-tabs a:hover { background: transparent; border-color: transparent; }
   .mobile-tabs a[aria-current="page"] { color: var(--bright); background: rgba(235, 199, 120, .2); }
   .mobile-tabs a[aria-current="page"] .i { stroke-width: 2.1; }
@@ -281,3 +281,4 @@ form[data-action="quiz"] .choice:hover, form[data-action="vote"] .choice:hover {
 form[data-action="quiz"] .choice:has(input:checked), form[data-action="vote"] .choice:has(input:checked) { border-color: var(--gold); background: rgba(235, 199, 120, .1); }
 form[data-action="quiz"] .choice input, form[data-action="vote"] .choice input { width: 18px; height: 18px; }
 form[data-action="quiz"] button, form[data-action="vote"] button { min-height: 46px; }
+@media (max-width: 767px) { .mobile-tabs .i { width: 20px; height: 20px; } }
