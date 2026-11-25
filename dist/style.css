@@ -58,10 +58,9 @@ main { margin-left: 230px; }
 .admin-page legend { padding-inline: 6px; color: var(--muted); }
 .admin-page .choice { min-height: 38px; }
 .topbar { gap: 12px; height: 65px; border-bottom: 1px solid var(--line); padding: 0 clamp(20px, 4vw, 52px); display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: .88rem; }
-.topbar a, .gold { color: var(--bright); }
+.topbar a { color: var(--bright); }
 #inbox-link { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px; }
 #inbox-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bright); color: var(--night); font-size: .68rem; font-weight: 700; display: grid; place-items: center; }
-.topbar-actions { display: flex; align-items: center; gap: 8px; }
 .menu-profile { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .menu-profile > span:not(.avatar), .menu-row > span:nth-child(2) { flex: 1; min-width: 0; }
 .menu-profile strong, .menu-row strong { display: block; }
