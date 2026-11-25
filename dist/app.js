@@ -84,23 +84,65 @@ const knowledge = [
   { title: 'UN organs', match: /security council|general assembly|un (history|organs|bodies)|united nations/i, text: 'The UN has six principal organs. The General Assembly includes every Member State. The Security Council has primary responsibility for international peace and security.', source: 'https://www.un.org/en/about-us/main-bodies' },
   { title: 'Human rights', match: /human rights|udhr/i, text: 'The Universal Declaration of Human Rights was adopted by the UN General Assembly in 1948. Use its text to identify the articles relevant to your committee topic.', source: 'https://www.un.org/en/about-us/universal-declaration-of-human-rights' }
 ];
+// Minimal, escape-first Markdown for assistant replies: paragraphs, bullet/numbered lists, **bold**, ### headings.
+function formatReply(text) {
+  const inline = line => esc(line).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  let html = '', list = '';
+  const close = () => { if (list) { html += `</${list}>`; list = ''; } };
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    const bullet = line.match(/^[-*•]\s+(.*)/), numbered = line.match(/^\d+[.)]\s+(.*)/), title = line.match(/^#{1,4}\s+(.*)/);
+    if (bullet || numbered) {
+      const kind = bullet ? 'ul' : 'ol';
+      if (list !== kind) { close(); html += `<${kind}>`; list = kind; }
+      html += `<li>${inline((bullet || numbered)[1])}</li>`;
+    } else {
+      close();
+      if (title) html += `<p><strong>${inline(title[1])}</strong></p>`;
+      else if (line) html += `<p>${inline(line)}</p>`;
+    }
+  }
+  close();
+  return html;
+}
+const suggestions = ['Explain the rules of procedure', 'Write an opening speech for Egypt', 'How do I write a position paper?', 'What is a moderated caucus?'];
 function assistant() {
-  return '<a class="text-link" href="#resources">Resource library →</a>' + heading('MUN Assistant', state.aiEnabled ? 'Ask about debate, research and procedure using the club library.' : 'Search the club library and read prepared guidance with sources.') +
-    `<section class="card"><div class="actions">${knowledge.slice(0, 5).map(item => `<button data-prompt="${item.title}">${item.title}</button>`).join('')}<button data-new-chat>New chat</button></div>
-    <div aria-live="polite">${conversation.map(({ question, reply }, index) => `<div class="reply"><strong>${esc(question)}</strong><p>${esc(reply.text)}</p>
-      ${safeUrl(reply.source) ? `<a class="text-link" href="${safeUrl(reply.source)}">Official UN source</a>` : ''}
-      ${(reply.sources || []).map(source => `<div class="news"><strong>${esc(source.title)}</strong>${source.excerpt ? `<p>${esc(source.excerpt)}</p>` : ''}${safeUrl(source.url) ? `<a class="text-link" href="${safeUrl(source.url)}">Open source</a>` : ''}</div>`).join('')}
-      <button data-copy="${index}">Copy response</button></div>`).join('')}</div>
-    <form data-action="assistant"><label>Your question<input name="question" required maxlength="350" placeholder="How do I structure a draft resolution?"></label><button class="primary">Ask assistant</button></form></section>`;
+  const ai = state.aiEnabled;
+  const intro = conversation.length ? '' : `<div class="chat-empty"><span class="chat-avatar">${icon('spark')}</span><h2>How can I help you prepare?</h2><p>${ai ? 'Ask about debate, MUN procedure, any country’s foreign policy, speeches or resolutions — in Arabic or English.' : 'Search the club library and read prepared guidance with sources.'}</p>
+    <div class="chips">${(ai ? suggestions : knowledge.slice(0, 5).map(item => item.title)).map(text => `<button data-prompt="${esc(text)}">${esc(text)}</button>`).join('')}</div></div>`;
+  const log = conversation.map(({ question, reply }, index) => `<div class="msg user"><p>${esc(question)}</p></div>
+    <div class="msg bot">${reply ? `${formatReply(reply.text)}
+      ${safeUrl(reply.source) ? `<a class="text-link" href="${safeUrl(reply.source)}">Official UN source ↗</a>` : ''}
+      ${(reply.sources || []).map(source => `<div class="source">${source.number ? `<span>[${source.number}]</span> ` : ''}<strong>${esc(source.title)}</strong>${source.excerpt ? `<p>${esc(source.excerpt)}</p>` : ''}${safeUrl(source.url) ? ` <a class="text-link" href="${safeUrl(source.url)}">Open ↗</a>` : ''}</div>`).join('')}
+      <button class="copy" data-copy="${index}">Copy</button>` : '<p class="typing" role="status">Thinking<span>.</span><span>.</span><span>.</span></p>'}</div>`).join('');
+  return `<div class="chat"><div class="chat-head"><div><h1>MUN Assistant</h1><p>${ai ? 'Powered by AI · check important facts' : 'Club library'}</p></div>${conversation.length ? '<button data-new-chat>New chat</button>' : ''}</div>
+    ${intro}<div class="chat-log" aria-live="polite">${log}</div>
+    <form class="chat-form" data-action="assistant"><label class="sr-only" for="chat-input">Your question</label><textarea id="chat-input" name="question" required maxlength="1000" rows="1" placeholder="Ask anything about MUN, debate or a country…"></textarea><button class="primary send" aria-label="Ask assistant">${icon('send')}</button></form></div>`;
 }
 async function ask(question) {
-  if (state.aiEnabled) {
-    conversation.push({ question, reply: await api("assistant", { question }) });
-    return;
+  const entry = { question, reply: null };
+  conversation.push(entry);
+  render();
+  scrollChat();
+  try {
+    if (state.aiEnabled) {
+      const history = conversation.slice(0, -1).filter(turn => turn.reply).map(turn => ({ question: turn.question, answer: turn.reply.text }));
+      entry.reply = await api('assistant', { question, history });
+    } else {
+      const prepared = knowledge.find(item => item.title === question) || knowledge.find(item => item.match.test(question));
+      const matches = await api('assistant/library', { question });
+      entry.reply = prepared ? { ...matches, ...prepared } : matches;
+    }
+  } catch (error) {
+    conversation.pop();
+    render();
+    const input = content.querySelector('#chat-input');
+    if (input) input.value = question;
+    throw error;
   }
-  const prepared = knowledge.find(item => item.title === question) || knowledge.find(item => item.match.test(question));
-  const matches = await api('assistant/library', { question });
-  conversation.push({ question, reply: prepared ? { ...matches, ...prepared } : matches });
+}
+function scrollChat() {
+  requestAnimationFrame(() => content.querySelector('.chat-log')?.lastElementChild?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
 }
 function resources() {
   return heading('Resources', 'Guides, templates and primary sources for committee preparation.') +
@@ -375,7 +417,7 @@ content.addEventListener('click', event => {
   if (button.dataset.readAll !== undefined) return perform(button, () => update('notifications-read-all', {}));
   if (filter) feedFilter = filter;
   if (period) scope = period;
-  if (prompt) return perform(button, () => ask(prompt));
+  if (prompt) return perform(button, async () => { await ask(prompt); scrollChat(); });
   if (edit) {
     editingPost = edit;
     render();
@@ -397,11 +439,17 @@ content.addEventListener('submit', event => {
   if (form.dataset.operation) fields.operation = form.dataset.operation;
   if (action === 'quiz') fields.date = state.quiz.date;
   perform(form.querySelector('button'), async () => {
-    if (action === 'assistant') return ask(fields.question);
+    if (action === 'assistant') { await ask(fields.question); scrollChat(); return; }
     if (action === 'activity') fields.starts = new Date(fields.starts).toISOString();
     await update(action, fields);
     if (action === 'publish') editingPost = '';
   });
+});
+content.addEventListener('keydown', event => {
+  if (event.target.id === 'chat-input' && event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    event.target.form.requestSubmit();
+  }
 });
 const visualViewport = window.visualViewport;
 function updateKeyboardLayout() {

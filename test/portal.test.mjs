@@ -11,7 +11,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
   const providerCalls = [];
   Object.assign(process.env, {
     APP_ORIGIN: origin, PORT: port, NODE_ENV: 'test', MUN_TEST_POSTGRES: 'memory',
-    AI_ENABLED: String(testAI), AI_PRIMARY_PROVIDER: 'gemini',
+    AI_ENABLED: String(testAI), AI_PRIMARY_PROVIDER: 'gemini', AI_MEMBER_DAILY_LIMIT: '5',
     GEMINI_API_KEY: 'fixture-gemini', GEMINI_MODEL: 'fixture',
     GROQ_API_KEY: 'fixture-groq', GROQ_MODEL: 'fixture',
     CLOUDINARY_CLOUD_NAME: 'fixture-cloud', CLOUDINARY_API_KEY: 'fixture-key', CLOUDINARY_API_SECRET: 'fixture-secret',
