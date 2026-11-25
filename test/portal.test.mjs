@@ -167,6 +167,8 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await (await get('/api/session', member)).json()).data.profile.role, 'Learning editor');
     assert.equal((await post('publish', poll, member)).status, 403);
     assert.equal((await post('member-email', { email: 'invited@gmail.com', role: 'Learning editor' }, owner)).status, 200);
+    assert.equal((await post('member-email', { email: 'copresident@gmail.com', role: 'Co-President' }, owner)).status, 400);
+    assert.equal((await post('member-email', { email: 'president@gmail.com', role: 'President' }, owner)).status, 400);
     const invited = await login('invited');
     assert.deepEqual((await (await get('/api/session', invited)).json()).data.permissions, ['learning']);
     const publishedActivity = (await (await post('activity', activity, owner)).json()).data.boardActivities[0];

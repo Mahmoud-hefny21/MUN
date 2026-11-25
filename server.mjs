@@ -160,13 +160,16 @@ async function memberFor(req) {
 }
 const rolePermissions = {
   President: ['members', 'posts', 'points', 'learning', 'activities'],
+  'Co-President': ['members', 'posts', 'points', 'learning', 'activities'],
   'Vice President': ['posts', 'points', 'learning', 'activities'],
   Head: ['posts'],
   'Assigned Admin': ['learning'],
   Member: []
 };
 const permissionsFor = member => member.role === 'Head' && !member.committee ? [] : (Object.hasOwn(rolePermissions, member.role) ? rolePermissions[member.role] : member.custom_permissions || []);
-const assignableRole = async role => typeof role === 'string' && role !== 'President' &&
+// Full-access roles are granted only by an administrator (provision scripts), never from the board workspace.
+const protectedRoles = ['President', 'Co-President'];
+const assignableRole = async role => typeof role === 'string' && !protectedRoles.includes(role) &&
   (Object.hasOwn(rolePermissions, role) || Boolean(await get('SELECT 1 FROM mun_custom_roles WHERE name=?', role)));
 const canManagePost = (member, post) => member.role !== 'Head' || Boolean(member.committee && post.committee === member.committee);
 async function dailyQuestion(date = today()) {
@@ -195,7 +198,7 @@ async function snapshot(member) {
       FROM mun_members m LEFT JOIN mun_transactions t ON m.id=t.member
       WHERE m.active=1 GROUP BY m.id`, weekStart.toISOString().slice(0,10), monthStart),
     boardMembers: permissions.includes('members') ? await all('SELECT id, name, email, role, active, committee, position FROM mun_members ORDER BY name') : [],
-    boardRoles: permissions.includes('members') ? [...Object.keys(rolePermissions).filter(role => role !== 'President'),
+    boardRoles: permissions.includes('members') ? [...Object.keys(rolePermissions).filter(role => !protectedRoles.includes(role)),
       ...(await all('SELECT name FROM mun_custom_roles ORDER BY name')).map(role => role.name)] : [],
     boardInvites: permissions.includes('members') ? await all('SELECT email,role FROM mun_member_invites WHERE created_at>now()-interval \'14 days\' ORDER BY created_at DESC LIMIT 50') : [],
     committees: permissions.includes('members') || (permissions.includes('posts') && member.role !== 'Head') ? await all('SELECT name FROM mun_committees ORDER BY name') : [],
@@ -225,18 +228,21 @@ async function snapshot(member) {
       : { date, result: answer },
     quizBank: permissions.includes('learning') ? await all('SELECT id, question FROM mun_quizzes ORDER BY id DESC LIMIT 100') : [],
     pushPreference: await push.preference(member.id),
-    pushDelivery: member.role === 'President' ? await push.deliverySummary() : null,
+    pushDelivery: protectedRoles.includes(member.role) ? await push.deliverySummary() : null,
     permissions, aiEnabled: providers.length > 0, photoUpload: photoUploadReady()
   };
 }
 async function bodyFrom(req, limit = 16384) {
+  // Reject oversized bodies early by header, otherwise read to the end (keeping nothing past the limit)
+  // so the 413 reaches the client instead of a connection reset.
+  check(!(Number(req.headers['content-length']) > limit * 4), 'Request is too large.', 413);
   let size = 0;
   const chunks = [];
   for await (const chunk of req) {
     size += chunk.length;
-    check(size <= limit, 'Request is too large.', 413);
-    chunks.push(chunk);
+    if (size <= limit) chunks.push(chunk);
   }
+  check(size <= limit, 'Request is too large.', 413);
   try {
     const body = parse(Buffer.concat(chunks).toString('utf8'));
     check(body && typeof body === 'object' && !Array.isArray(body), 'Invalid request body.');
@@ -462,7 +468,7 @@ async function mutate(path, member, body) {
   if (path === 'member') {
     requirePermission(member, 'members');
     const target = await get('SELECT * FROM mun_members WHERE id=?', clean(body.id, 255, 'member'));
-    check(target && target.role !== 'President' && target.id !== member.id, 'That account requires a separate administrative review.', 403);
+    check(target && !protectedRoles.includes(target.role) && target.id !== member.id, 'That account requires a separate administrative review.', 403);
     check(await assignableRole(body.role) && ['0', '1'].includes(body.active), 'Invalid member settings.');
     const committee = clean(body.committee ?? target.committee, 60, 'committee', true);
     const position = clean(body.position ?? target.position, 60, 'position', true);
