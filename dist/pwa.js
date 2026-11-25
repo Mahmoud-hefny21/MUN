@@ -1,3 +1,6 @@
+// No pinch zoom: iOS Safari ignores user-scalable=no, so block its gesture events too.
+['gesturestart', 'gesturechange'].forEach(type => document.addEventListener(type, event => event.preventDefault(), { passive: false }));
+
 // Install support: keeps the browser's install prompt so the app can offer a one-tap "Install app" button.
 const munInstall = (() => {
   let deferred = null;
