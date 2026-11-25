@@ -312,6 +312,14 @@ function lines(value, max) {
 const photoLimit = 400000;
 const cloudinary = { cloud: env.CLOUDINARY_CLOUD_NAME, key: env.CLOUDINARY_API_KEY, secret: env.CLOUDINARY_API_SECRET };
 const photoUploadReady = () => Boolean(cloudinary.cloud && cloudinary.key && cloudinary.secret);
+// Public id of a raw file in this Cloudinary account (e.g. "mun/resources/abc.pdf"), or null for any other URL.
+const cloudinaryRaw = value => {
+  try {
+    const parsed = new URL(value);
+    const match = parsed.hostname === 'res.cloudinary.com' && parsed.pathname.match(/^\/([^/]+)\/raw\/upload\/(?:v\d+\/)?(.+)$/);
+    return match && match[1] === cloudinary.cloud ? decodeURIComponent(match[2]) : null;
+  } catch { return null; }
+};
 async function uploadPhoto(memberId, image) {
   check(photoUploadReady(), 'Photo uploads are not set up yet.', 503);
   const params = { folder: 'mun/members', invalidate: 'true', overwrite: 'true', public_id: digest(memberId).slice(0, 24), timestamp: String(Math.floor(Date.now() / 1000)) };
@@ -614,6 +622,28 @@ async function mutate(path, member, body) {
     });
     return 'Resource added.';
   }
+  if (path === 'resource-update') {
+    requirePermission(member, 'learning');
+    const id = Number(body.id);
+    check(Number.isInteger(id) && await get('SELECT id FROM mun_resources WHERE id=?', id), 'Resource not found.', 404);
+    const title = clean(body.title, 100, 'title');
+    check(!await get('SELECT id FROM mun_resources WHERE title=? AND id<>?', title, id), 'That resource title already exists.', 409);
+    await transact(async () => {
+      await run('UPDATE mun_resources SET title=?, category=?, body=?, url=? WHERE id=?', title, clean(body.category, 60, 'category'),
+        clean(body.body, 3500, 'description'), httpsUrl(clean(body.url, 500, 'link', true)), id);
+      await audit(member.id, 'resource.update', String(id));
+    });
+    return 'Resource updated.';
+  }
+  if (path === 'resource-delete') {
+    requirePermission(member, 'learning');
+    const id = Number(body.id);
+    await transact(async () => {
+      check(Number.isInteger(id) && (await run('DELETE FROM mun_resources WHERE id=?', id)).changes, 'Resource not found.', 404);
+      await audit(member.id, 'resource.delete', String(id));
+    });
+    return 'Resource deleted.';
+  }
   throw new HttpError(404, 'Unknown operation.');
 }
 
@@ -759,7 +789,7 @@ app.use(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.onesignal.com https://api.onesignal.com https://onesignal.com; style-src 'self' https://cdn.onesignal.com https://onesignal.com; connect-src 'self' https://onesignal.com https://*.onesignal.com; frame-src https://onesignal.com https://*.onesignal.com; worker-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.onesignal.com https://api.onesignal.com https://onesignal.com; style-src 'self' https://cdn.onesignal.com https://onesignal.com; connect-src 'self' https://onesignal.com https://*.onesignal.com https://api.cloudinary.com; frame-src https://onesignal.com https://*.onesignal.com; worker-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   try {
     const url = new URL(req.url, origin);
     const path = url.pathname;
@@ -802,6 +832,18 @@ app.use(async (req, res) => {
     if (req.method === 'GET' && (googleStarts.includes(path) || googleCallbacks.includes(path))) return await googleLogin(req, res, url);
     const member = await memberFor(req);
     if (req.method === 'GET' && path === '/api/session') return respond(res, 200, member ? { signedIn: true, data: await snapshot(member) } : { signedIn: false, googleReady: googleReady() });
+    // Resource PDFs stored on Cloudinary open through a short-lived signed download link, for signed-in members only.
+    // (Free Cloudinary accounts block public PDF delivery; the signed download API is allowed.)
+    if (req.method === 'GET' && path === '/api/resource-file') {
+      check(member, 'Sign in with Google to continue.', 401);
+      const resource = await get('SELECT url FROM mun_resources WHERE id=?', Number(url.searchParams.get('id')));
+      check(resource?.url, 'Resource not found.', 404);
+      const stored = cloudinaryRaw(resource.url);
+      if (!stored || !photoUploadReady()) return redirect(res, resource.url);
+      const params = { expires_at: String(Math.floor(Date.now() / 1000) + 600), public_id: stored, timestamp: String(Math.floor(Date.now() / 1000)), type: 'upload' };
+      const signature = createHash('sha1').update(Object.keys(params).sort().map(key => key + '=' + params[key]).join('&') + cloudinary.secret).digest('hex');
+      return redirect(res, 'https://api.cloudinary.com/v1_1/' + encodeURIComponent(cloudinary.cloud) + '/raw/download?' + new URLSearchParams({ ...params, api_key: cloudinary.key, signature }));
+    }
     check(path.startsWith('/api/') && req.method === 'POST', 'Page not found.', 404);
     check(req.headers.origin === origin, 'Invalid request origin.', 403);
     check(member, 'Sign in with Google to continue.', 401);
@@ -826,6 +868,14 @@ app.use(async (req, res) => {
       check(typeof data.enabled === 'boolean', 'Select a valid push preference.');
       await push.setPreference(currentMember.id, data.enabled);
       return respond(res, 200, { enabled: data.enabled });
+    }
+    // Signed upload ticket for a resource PDF: the browser uploads straight to Cloudinary (raw files, max 10 MB).
+    if (path === '/api/resource-upload') {
+      requirePermission(currentMember, 'learning');
+      check(photoUploadReady(), 'File uploads are not set up yet.', 503);
+      const params = { folder: 'mun/resources', timestamp: String(Math.floor(Date.now() / 1000)) };
+      const signature = createHash('sha1').update(Object.keys(params).sort().map(key => key + '=' + params[key]).join('&') + cloudinary.secret).digest('hex');
+      return respond(res, 200, { url: 'https://api.cloudinary.com/v1_1/' + encodeURIComponent(cloudinary.cloud) + '/raw/upload', fields: { ...params, api_key: cloudinary.key, signature } });
     }
     // Any member's points history, for board members who manage points (President, Co-President, Vice President).
     if (path === '/api/points-history') {

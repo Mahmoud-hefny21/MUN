@@ -421,3 +421,7 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .history-box .minus { color: #f0a8a0; font-weight: 700; }
 .history-btn { width: 100%; margin: 10px 0 8px; }
 .row-history { margin-bottom: 14px; }
+/* Resource PDFs */
+.pdf-link { margin-top: 10px; gap: 8px; }
+.pdf-link .i { width: 18px; height: 18px; }
+input[type="file"] { padding: 8px; }

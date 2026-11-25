@@ -76,6 +76,13 @@ export async function verifyBrowser(base, session, memberSession) {
     await page.locator('#history-results .pick').first().click();
     await page.locator('#points-history .history-head').waitFor();
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/points-history-320.png', fullPage: true });
+    await boardSections.getByRole('link', { name: 'Resources' }).click();
+    const resourceRow = page.locator('.list-row').filter({ has: page.locator('[data-edit-resource]') }).first();
+    await resourceRow.getByRole('button', { name: 'Edit' }).click();
+    await page.getByRole('heading', { name: 'Edit resource' }).waitFor();
+    await page.getByRole('button', { name: 'Cancel editing' }).click();
+    await page.getByRole('heading', { name: 'Add resource' }).waitFor();
+    if (screenshotDir) await page.screenshot({ path: screenshotDir + '/admin-resources-390.png', fullPage: true });
     await boardSections.getByRole('link', { name: 'Members' }).click();
     await page.locator('.member-row').first().locator('summary').click();
     await page.locator('.member-row').first().locator('.access-chips').waitFor();

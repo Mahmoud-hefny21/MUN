@@ -8,6 +8,7 @@ let photoDraft = '';
 let state;
 let session = {};
 let editingPost = '';
+let editingResource = '';
 let busy = false;
 let scope = 'points';
 let feedFilter = 'All';
@@ -28,6 +29,9 @@ const shortName = name => {
   while (start > 1 && nameParticles.has(parts[start - 1].toLowerCase())) start--;
   return [parts[0], ...parts.slice(start)].join(' ');
 };
+const isPdf = url => /\.pdf($|\?)/i.test(url || '') || /res\.cloudinary\.com\/[^/]+\/raw\/upload\//.test(url || '');
+// Uploaded PDFs open through the server (signed, members only); other links open directly.
+const resourceHref = item => /^https:\/\/res\.cloudinary\.com\/[^/]+\/raw\/upload\//.test(item.url || '') ? '/api/resource-file?id=' + encodeURIComponent(item.id) : safeUrl(item.url);
 const icon = id => `<svg class="i" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 const initials = name => esc(name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase());
 const avatar = (p, size = '') => safeUrl(p.photo)
@@ -178,7 +182,7 @@ function scrollChat() {
 }
 function resources() {
   return heading('Resources', 'Guides, templates and primary sources for committee preparation.') +
-    `<div class="stack"><label>Search resources<input id="resource-search" type="search" placeholder="Try “position paper”"></label><p id="no-resources" hidden>No resources match your search.</p>${state.resources.map(item => `<article class="card resource"><div class="label">${esc(item.category)}</div><h2>${esc(item.title)}</h2><p class="content-line">${esc(item.body)}</p>${safeUrl(item.url) ? `<a class="text-link" href="${safeUrl(item.url)}">Open resource ↗</a>` : ''}</article>`).join('')}</div>`;
+    `<div class="stack"><label>Search resources<input id="resource-search" type="search" placeholder="Try “position paper”"></label><p id="no-resources" hidden>No resources match your search.</p>${state.resources.map(item => `<article class="card resource"><div class="label">${esc(item.category)}</div><h2>${esc(item.title)}</h2><p class="content-line">${esc(item.body)}</p>${safeUrl(item.url) ? `<a class="${isPdf(item.url) ? 'button pdf-link' : 'text-link'}" href="${resourceHref(item)}" target="_blank" rel="noopener">${isPdf(item.url) ? icon('book') + ' Open PDF' : 'Open resource ↗'}</a>` : ''}</article>`).join('')}</div>`;
 }
 function profile() {
   const p = state.profile;
@@ -341,7 +345,20 @@ function admin() {
     <section class="card stack"><h2>Member points history</h2><p class="hint">Search any member to see every point they earned or lost, and who recorded it.</p><input id="history-search" type="search" placeholder="Search a member by name" aria-label="Search a member by name" autocomplete="off"><div id="history-results" class="pick-list">${historyMatches('')}</div><div id="points-history" class="history-box" aria-live="polite"></div></section>` : '';
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
     <section class="card stack"><h2>Schedule a quiz</h2>${state.quizBank.length ? `<form data-action="schedule-quiz"><label>Question<select name="question" required>${state.quizBank.map(item => `<option value="${item.id}">${esc(item.question)}</option>`).join('')}</select></label><label>Cairo date<input type="date" name="date" min="${esc(state.quiz.date)}" required></label><label>Reward<select name="reward"><option>0</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label>Source URL<input type="url" name="source" required maxlength="500"></label><button class="primary">Schedule quiz</button></form>` : '<p>Add a question to the quiz bank before scheduling.</p>'}</section>
-    <section class="card stack"><h2>Add resource</h2><form data-action="resource"><label>Title<input name="title" required maxlength="100"></label><label>Category<input name="category" required maxlength="60"></label><label>Material<textarea name="body" required maxlength="3500"></textarea></label><label>Link<input type="url" name="url" maxlength="500"></label><button class="primary">Add resource</button></form></section>` : '';
+` : '';
+  // Resources tab: add, edit and delete; attach your own PDF (uploaded to Cloudinary) or link to a page.
+  const editingRes = state.resources.find(item => String(item.id) === String(editingResource));
+  const resourcePanel = can('learning') ? `<section class="card stack"><h2>${editingRes ? 'Edit resource' : 'Add resource'}</h2>
+      <form id="resource-editor" data-action="${editingRes ? 'resource-update' : 'resource'}" data-id="${esc(editingRes?.id)}">
+      <label>Title<input name="title" required maxlength="100" value="${esc(editingRes?.title)}"></label>
+      <label>Category<input name="category" required maxlength="60" value="${esc(editingRes?.category)}" placeholder="e.g. Study guide, Rules, Template"></label>
+      <label>Description<textarea name="body" required maxlength="3500" placeholder="What is it and when should members use it?">${esc(editingRes?.body)}</textarea></label>
+      <label>PDF file<input id="resource-file" type="file" accept="application/pdf,.pdf"></label>
+      <p class="hint">Upload your own PDF (up to 10 MB)${editingRes?.url ? ' to replace the current file or link' : ''}, or paste a link instead.</p>
+      <label>Link<input type="url" name="url" maxlength="500" value="${esc(editingRes?.url)}" placeholder="https://…"></label>
+      <button class="primary">${editingRes ? 'Save changes' : 'Add resource'}</button></form>${editingRes ? '<button data-cancel-resource>Cancel editing</button>' : ''}</section>
+    <section class="card stack"><div class="section-head"><h2>All resources</h2><span class="count">${state.resources.length}</span></div>
+      ${state.resources.map(item => `<div class="list-row"><span class="list-main"><strong>${esc(item.title)}</strong><small>${esc(item.category)}${isPdf(item.url) ? ' · PDF' : item.url ? ' · Link' : ''}</small></span><span class="row-actions"><button data-edit-resource="${esc(item.id)}">Edit</button><button class="danger" data-delete-resource="${esc(item.id)}">Delete</button></span></div>`).join('') || '<p>No resources yet.</p>'}</section>` : '';
   // Members directory: everyone from the club roster plus anyone who signed in.
   const fullAccess = role => ['President', 'Co-President'].includes(role);
   const committeeOptions = selected => '<option value="">Unassigned</option>' + state.committees.map(item => `<option ${item.name === selected ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
@@ -386,7 +403,8 @@ function admin() {
     { id: 'feed', label: 'Feed & polls', content: postPanel },
     { id: 'activities', label: 'Activities', content: activityPanel },
     { id: 'points', label: 'Points', content: pointsPanel },
-    { id: 'learning', label: 'Quiz & resources', content: learningPanel },
+    { id: 'learning', label: 'Quiz', content: learningPanel },
+    { id: 'resources', label: 'Resources', content: resourcePanel },
     { id: 'delivery', label: 'Push delivery', content: delivery }
   ].filter(section => section.content);
   const selected = sections.find(section => location.hash === '#admin/' + section.id) || sections[0];
@@ -522,6 +540,22 @@ async function perform(control, operation) {
     document.body.removeAttribute('aria-busy');
   }
 }
+// Upload a PDF straight to Cloudinary with a short-lived signed ticket from the server.
+async function uploadResourcePdf(file) {
+  if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw Error('Choose a PDF file.');
+  if (file.size > 10e6) throw Error('PDF files must be 10 MB or smaller.');
+  const ticket = await api('resource-upload', {});
+  const form = new FormData();
+  Object.entries(ticket.fields).forEach(([key, value]) => form.append(key, value));
+  form.append('file', file);
+  let result;
+  try {
+    const response = await fetch(ticket.url, { method: 'POST', body: form });
+    result = response.ok ? await response.json() : null;
+  } catch { result = null; }
+  if (!result?.secure_url?.startsWith('https://res.cloudinary.com/')) throw Error('The PDF could not be uploaded. Try again.');
+  return result.secure_url;
+}
 async function update(action, fields) {
   const result = await api(action, fields);
   state = result.data;
@@ -590,6 +624,17 @@ content.addEventListener('click', event => {
   if (button.dataset.signout !== undefined) return signOut(button);
   if (button.dataset.install !== undefined) return showWelcome(true);
   if (button.dataset.history) return showHistory(button);
+  if (button.dataset.editResource) {
+    editingResource = button.dataset.editResource;
+    render();
+    content.querySelector('#resource-editor [name="title"]')?.focus();
+    return;
+  }
+  if (button.dataset.cancelResource !== undefined) { editingResource = ''; return render(); }
+  if (button.dataset.deleteResource) {
+    if (confirm('Delete this resource? Members will no longer see it.')) perform(button, () => update('resource-delete', { id: button.dataset.deleteResource }));
+    return;
+  }
   if (button.dataset.removeMember) {
     if (confirm('Remove ' + button.dataset.removeMember + ' from the club? They lose access right away; their points and history are kept.')) perform(button, () => update('directory-remove', { email: button.dataset.removeMember }));
     return;
@@ -646,8 +691,11 @@ content.addEventListener('submit', event => {
   perform(form.querySelector('button'), async () => {
     if (action === 'assistant') { await ask(fields.question); scrollChat(); return; }
     if (action === 'activity') fields.starts = new Date(fields.starts).toISOString();
+    const pdf = form.querySelector('#resource-file')?.files[0];
+    if (pdf) fields.url = await uploadResourcePdf(pdf);
     await update(action, fields);
     if (action === 'publish') editingPost = '';
+    if (action === 'resource-update') editingResource = '';
   });
 });
 content.addEventListener('keydown', event => {
