@@ -16,6 +16,17 @@ export async function verifyBrowser(base, session, memberSession) {
   try {
     await page.goto(base + '/');
     await page.getByRole('heading', { name: routes.home, level: 1 }).waitFor();
+    const welcome = page.getByRole('dialog', { name: 'Welcome to MIU MUN' });
+    await welcome.getByText('Add to your Home Screen').waitFor();
+    if (screenshotDir) {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: screenshotDir + '/welcome-390.png' });
+    }
+    await welcome.getByRole('button', { name: 'Done' }).click();
+    assert.equal(await welcome.count(), 0);
+    await page.reload();
+    await page.getByRole('heading', { name: routes.home, level: 1 }).waitFor();
+    assert.equal(await welcome.count(), 0);
     for (const width of widths) {
       await page.setViewportSize({ width, height: 900 });
       for (const [route, title] of Object.entries(routes)) {

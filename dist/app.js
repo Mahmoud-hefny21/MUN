@@ -19,7 +19,15 @@ const level = () => Math.max(1, Math.floor(points() / 50) + 1);
 const postOrder = () => [...state.posts].sort((a, b) => Number(b.pinned) - Number(a.pinned));
 const safeUrl = value => /^https:\/\//i.test(value || '') ? esc(value) : '';
 // First and last name only, so long four-part names fit on one line.
-const shortName = name => { const parts = String(name || '').trim().split(/\s+/); return parts.length > 2 ? parts[0] + ' ' + parts.at(-1) : parts.join(' '); };
+// Keeps compound family names together: "Abdel Aziz", "El Naggar", "Abd El Rahman".
+const nameParticles = new Set(['abd', 'abdel', 'abdul', 'abdal', 'el', 'al', 'abu', 'abou', 'bin', 'ibn', 'ben']);
+const shortName = name => {
+  const parts = String(name || '').trim().split(/\s+/);
+  if (parts.length <= 2) return parts.join(' ');
+  let start = parts.length - 1;
+  while (start > 1 && nameParticles.has(parts[start - 1].toLowerCase())) start--;
+  return [parts[0], ...parts.slice(start)].join(' ');
+};
 const icon = id => `<svg class="i" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 const initials = name => esc(name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase());
 const avatar = (p, size = '') => safeUrl(p.photo)
@@ -58,6 +66,7 @@ function feed() {
     <div class="stack">${posts.map(post => `<div class="card">${news(post)}${post.type === 'Poll' ? poll(post) : ''}</div>`).join('') || '<p>No posts in this category yet.</p>'}</div>`;
 }
 function pointHistory() {
+  if (!state.transactions.length) return '<p>No points yet. Answer the daily quiz and join club activities to earn points.</p>';
   return `<ul class="ranking">${[...state.transactions].reverse().map(entry => `<li><span>${entry.amount > 0 ? '+' : ''}${entry.amount}</span><span>${esc(entry.reason)}<br><small>${esc(entry.date)} · ${esc(entry.by)}</small></span></li>`).join('')}</ul>`;
 }
 function fantasy() {
@@ -173,6 +182,7 @@ function menu() {
   return heading('Menu', 'Your account and more club tools.') +
     `<a class="card menu-profile" href="#profile">${avatar(p, 'lg')}<span><strong>${esc(shortName(p.name))}</strong><small>${[p.role, p.committee].filter(Boolean).map(esc).join(' · ')}</small></span>${icon('chevron')}</a>
     <div class="card menu-list">${row('#profile', 'user', 'My Profile', 'Photo, name and achievements')}${row('#assistant', 'spark', 'MUN Assistant', 'Prepare for committee')}${row('#resources', 'book', 'Resources', 'Guides, templates and sources')}${row('#notifications', 'bell', 'Inbox', state.unreadNotifications ? state.unreadNotifications + ' unread' : 'Notifications and push')}${state.permissions.length ? row('#admin', 'shield', 'Board workspace', 'Manage the club') : ''}</div>
+    ${munInstall.standalone() ? '' : `<button class="menu-install" data-install>${icon('download')} Install app &amp; notifications</button>`}
     <button class="signout" data-signout>${icon('logout')} Sign out</button>`;
 }
 // Center-crop any image source to a 512px square JPEG so uploads stay small.
@@ -187,6 +197,70 @@ function stopCamera() {
   camera?.getTracks().forEach(track => track.stop());
   camera = null;
 }
+
+// First-visit welcome sheet: one tap to install the app and one to turn on notifications.
+const welcomeKey = 'mun-welcome-v1';
+const pushAvailable = () => Boolean(state?.pushPreference);
+function installStep() {
+  if (munInstall.standalone()) return `<p class="step-done">${icon('quiz')} App installed</p>`;
+  if (munInstall.canPrompt()) return `<button class="primary" data-welcome="install">${icon('download')} Install app</button>`;
+  if (munInstall.ios) return `<p class="hint">In Safari, tap <strong>Share</strong> ${icon('share')} then <strong>Add to Home Screen</strong>.</p>`;
+  return '<p class="hint">Open your browser menu and choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</p>';
+}
+function pushStep() {
+  if (!pushAvailable()) return '<p class="hint">Notifications will be available soon.</p>';
+  if (state.pushPreference.enabled) return `<p class="step-done">${icon('quiz')} Notifications on</p>`;
+  if (munInstall.ios && !munInstall.standalone()) return '<p class="hint">On iPhone, install the app first, then open it from your Home Screen to turn on notifications.</p>';
+  return `<button class="primary" data-welcome="push">${icon('bell')} Turn on notifications</button>`;
+}
+function showWelcome(force = false) {
+  if (!state || (!force && localStorage.getItem(welcomeKey))) return;
+  if (!force && munInstall.standalone() && (!pushAvailable() || state.pushPreference.enabled)) return localStorage.setItem(welcomeKey, '1');
+  if (pushAvailable() && !state.pushPreference.enabled) munPush.prepare().catch(() => {});
+  let sheet = document.querySelector('#welcome');
+  if (!sheet) {
+    sheet = document.createElement('div');
+    sheet.id = 'welcome';
+    sheet.className = 'sheet-backdrop';
+    document.body.append(sheet);
+  }
+  sheet.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+    <img src="/logo.jpg" width="64" height="64" alt=""><h2 id="welcome-title">Welcome to MIU MUN</h2><p>Get the full app experience in two taps.</p>
+    <div class="step"><span class="icon">${icon('download')}</span><div><strong>Add to your Home Screen</strong><small>Open the portal like an app, full screen.</small>${installStep()}</div></div>
+    <div class="step"><span class="icon">${icon('bell')}</span><div><strong>Get notified</strong><small>New posts, quizzes, points and events.</small>${pushStep()}</div></div>
+    <p class="notice" id="welcome-status" role="status" hidden></p>
+    <button class="sheet-close" data-welcome="close">Done</button></section>`;
+  sheet.querySelector('[data-welcome]')?.focus();
+}
+function closeWelcome() {
+  localStorage.setItem(welcomeKey, '1');
+  document.querySelector('#welcome')?.remove();
+}
+document.addEventListener('click', async event => {
+  const button = event.target.closest('[data-welcome]');
+  if (!button) {
+    if (event.target.id === 'welcome') closeWelcome();
+    return;
+  }
+  const step = button.dataset.welcome;
+  if (step === 'close') return closeWelcome();
+  const status = document.querySelector('#welcome-status');
+  button.disabled = true;
+  try {
+    if (step === 'install') await munInstall.prompt();
+    if (step === 'push') {
+      if (!munPush.isReady()) await munPush.prepare();
+      await munPush.optIn();
+      state.pushPreference = await api('push/preference', { enabled: true });
+    }
+    showWelcome(true);
+  } catch (error) {
+    status.hidden = false;
+    status.textContent = error.message;
+    button.disabled = false;
+  }
+});
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && document.querySelector('#welcome')) closeWelcome(); });
 
 const can = permission => state.permissions.includes(permission);
 function admin() {
@@ -307,6 +381,9 @@ async function loadSession() {
     session = { message: 'Start the portal server to connect to Google sign-in.' };
   }
   render();
+  // pwa.js loads after this file, so wire install updates once the session is in.
+  munInstall.onChange(() => { if (document.querySelector('#welcome')) showWelcome(true); });
+  showWelcome();
 }
 async function perform(control, operation) {
   if (busy) return;
@@ -390,6 +467,7 @@ content.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!state || !button || button.form || busy) return;
   if (button.dataset.signout !== undefined) return signOut(button);
+  if (button.dataset.install !== undefined) return showWelcome(true);
   if (button.dataset.photo) return photoAction(button);
   if (button.dataset.push) return perform(button, async () => {
     if (button.dataset.push === 'prepare') {
