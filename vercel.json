@@ -13,14 +13,25 @@
   ],
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/",
       "has": [
         {
           "type": "host",
           "value": "mun-smoky.vercel.app"
         }
       ],
-      "destination": "https://www.miumunal.org/:path*",
+      "destination": "https://www.miumunal.org/",
+      "permanent": true
+    },
+    {
+      "source": "/:path+",
+      "has": [
+        {
+          "type": "host",
+          "value": "mun-smoky.vercel.app"
+        }
+      ],
+      "destination": "https://www.miumunal.org/:path+",
       "permanent": true
     }
   ]
