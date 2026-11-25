@@ -10,3 +10,5 @@ docs
 *.pptx
 *.JPEG
 *.tar.gz
+*.xlsx
+~$*
