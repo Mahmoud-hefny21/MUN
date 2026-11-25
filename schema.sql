@@ -33,3 +33,40 @@
   );
   CREATE INDEX IF NOT EXISTS mun_transactions_member_date ON mun_transactions(member, date);
   CREATE INDEX IF NOT EXISTS mun_sessions_expiry ON mun_sessions(expires);
+  CREATE TABLE IF NOT EXISTS mun_audit_events (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    actor TEXT NOT NULL REFERENCES mun_members(id), action TEXT NOT NULL,
+    subject TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE TABLE IF NOT EXISTS mun_notification_events (
+    id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL, route TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE TABLE IF NOT EXISTS mun_notifications (
+    event_id TEXT NOT NULL REFERENCES mun_notification_events(id),
+    member TEXT NOT NULL REFERENCES mun_members(id), read_at TIMESTAMPTZ,
+    PRIMARY KEY(event_id, member)
+  );
+  CREATE INDEX IF NOT EXISTS mun_notifications_member_read ON mun_notifications(member, read_at);
+  CREATE TABLE IF NOT EXISTS mun_ai_counters (
+    bucket TEXT PRIMARY KEY, used INTEGER NOT NULL CHECK(used >= 0)
+  );
+  CREATE TABLE IF NOT EXISTS mun_daily_quizzes (
+    day TEXT PRIMARY KEY, question INTEGER NOT NULL REFERENCES mun_quizzes(id),
+    reward INTEGER NOT NULL CHECK (reward=0 OR reward BETWEEN 2 AND 5),
+    source_url TEXT NOT NULL, scheduled_by TEXT NOT NULL REFERENCES mun_members(id)
+  );
+  CREATE TABLE IF NOT EXISTS mun_committees (name TEXT PRIMARY KEY);
+  ALTER TABLE mun_posts ADD COLUMN IF NOT EXISTS committee TEXT REFERENCES mun_committees(name);
+  ALTER TABLE mun_notification_events ADD COLUMN IF NOT EXISTS committee TEXT REFERENCES mun_committees(name);
+  CREATE TABLE IF NOT EXISTS mun_activities (
+    id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL,
+    starts_at TIMESTAMPTZ NOT NULL, committee TEXT REFERENCES mun_committees(name)
+  );
+  CREATE INDEX IF NOT EXISTS mun_activities_starts ON mun_activities(starts_at);
+  CREATE TABLE IF NOT EXISTS mun_attendance (
+    activity TEXT NOT NULL REFERENCES mun_activities(id), member TEXT NOT NULL REFERENCES mun_members(id),
+    recorded_by TEXT NOT NULL REFERENCES mun_members(id), recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(activity,member)
+  );
+  CREATE INDEX IF NOT EXISTS mun_attendance_member ON mun_attendance(member);

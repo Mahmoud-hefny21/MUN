@@ -4,12 +4,12 @@ Run from this directory with Node.js 24 or newer and a Neon Postgres database. T
 
 1. Run `npm ci`. Copy `.env.example` to `.env` if needed, then set `DATABASE_URL` to the pooled connection string from Neon. Leave `APP_ORIGIN=http://localhost:3000` for local use.
 2. In [Google Cloud](https://console.cloud.google.com/auth/clients), configure the OAuth consent screen and create a **Web application** client. Add `http://localhost:3000/auth/google/callback` under **Authorized redirect URIs**. If the app is in Testing mode, add the Google accounts that will test it.
-3. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `BOARD_OWNER_EMAIL` in `.env`. The board owner must sign in with that verified Google account. New Google users otherwise get the Member role. The board owner can change roles and deactivate accounts.
+3. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `BOARD_OWNER_EMAIL` in `.env`. The board owner must sign in with that verified Google account. New members wait for board approval before activation.
 4. Run `npm.cmd start` in PowerShell or `npm start` on other shells. Open [http://localhost:3000](http://localhost:3000).
 
-The server initializes the `mun_` tables on startup and adds official learning links, templates and a small quiz bank. The board adds club updates and other material. Members, feed, votes and points are stored in Neon.
+Apply schema changes explicitly to an isolated database using `DIRECT_DATABASE_URL` and `npm run db:migrate:deploy`. Existing data stays in the `mun_` tables. To add starter learning links and quiz questions to an isolated development database, run the server with `MUN_SEED=true`.
 
-To enable generated answers, set `OPENAI_API_KEY` and `OPENAI_MODEL`. The assistant sends the member's question and relevant library excerpts to the API. With those variables unset it serves prepared answers and official links.
+The assistant serves prepared answers and official links by default. External generation remains subject to the organization's provider and privacy approval. See [deployment and provider eligibility](DEPLOYMENT_GUIDE.md).
 
 ## Deploy
 

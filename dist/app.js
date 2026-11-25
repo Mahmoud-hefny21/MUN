@@ -1,6 +1,6 @@
 const content = document.querySelector('#content');
 
-const pages = { home: 'Overview', feed: 'Club Feed', fantasy: 'Fantasy', assistant: 'MUN Assistant', resources: 'Resources', quiz: 'Daily Quiz', profile: 'My Profile', admin: 'Board Workspace' };
+const pages = { home: 'Overview', feed: 'Club Feed', fantasy: 'Fantasy', assistant: 'MUN Assistant', resources: 'Resources', quiz: 'Daily Quiz', profile: 'My Profile', admin: 'Board Workspace', notifications: 'Inbox' };
 let state;
 let session = {};
 let editingPost = '';
@@ -24,16 +24,18 @@ const rank = () => ranks('points').findIndex(member => member.you) + 1;
 const heading = (title, detail) => `<div class="page-heading"><h1>${title}</h1><p>${detail}</p></div>`;
 const news = post => `<article class="news"><div class="label">${post.pinned ? 'Pinned · ' : ''}${esc(post.type)}</div><h3>${esc(post.title)}</h3><p class="content-line">${esc(post.body)}</p></article>`;
 const stats = () => `<div class="stats">${[['✦', points(), 'Total points'], ['♜', '#' + rank(), 'Global rank'], ['◈', level(), 'Delegate level']].map(([icon, value, label]) => `<div class="card stat"><span class="icon" aria-hidden="true">${icon}</span><div><strong>${value}</strong><small>${label}</small></div></div>`).join('')}</div>`;
+const clubTime = time => new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Cairo' }).format(new Date(time));
+const activitiesList = entries => entries.map(item => `<p class="news"><strong>${esc(item.title)}</strong> ? ${esc(item.kind)} ? ${esc(clubTime(item.starts_at))} Cairo</p>`).join('');
 function home() {
   return `<section class="hero"><div class="hero-copy"><span class="eyebrow">MIU Model United Nations &amp; Arab League</span><h1>Welcome, ${esc(state.profile.name.split(/\s+/)[0])}.</h1><p>Follow club updates, prepare for committee, and see where you stand this week.</p><a class="button primary" href="#feed">Open club feed&nbsp; →</a></div><img class="hero-art" src="logo.jpg" alt="MIU Model United Nations and Arab League XIX emblem"></section>
   ${stats()}<div class="grid"><section class="card"><div class="section-head"><h2>Club updates</h2><a href="#feed">View feed →</a></div>${postOrder().slice(0, 2).map(news).join('') || '<p>No updates yet.</p>'}</section><section class="card"><div class="section-head"><h2>Weekly leaderboard</h2><a href="#fantasy">Full rankings →</a></div>${ranking('week', 3)}</section></div>
-  <div class="shortcuts">${[['fantasy','♜','Fantasy','Explore the standings'], ['assistant','✧','MUN Assistant','Prepare for committee'], ['quiz','◈','Daily Quiz','Test your MUN knowledge']].map(([route, icon, title, subtitle]) => `<a class="card" href="#${route}"><span class="icon" aria-hidden="true">${icon}</span><span><strong>${title}</strong><small>${subtitle}</small></span></a>`).join('')}</div>`;
+  <section class="card upcoming"><div class="section-head"><h2>Upcoming activities</h2></div>${activitiesList(state.activities) || "<p>No upcoming activities.</p>"}</section><div class="shortcuts">${[['fantasy','♜','Fantasy','Explore the standings'], ['assistant','✧','MUN Assistant','Prepare for committee'], ['quiz','◈','Daily Quiz','Test your MUN knowledge']].map(([route, icon, title, subtitle]) => `<a class="card" href="#${route}"><span class="icon" aria-hidden="true">${icon}</span><span><strong>${title}</strong><small>${subtitle}</small></span></a>`).join('')}</div>`;
 }
 const types = ['Announcement', 'Poll', 'Winners', 'General Update', 'Challenge'];
 function poll(post) {
   const voted = state.votes[post.id];
   const total = post.votes.reduce((sum, count) => sum + count, 0);
-  const results = voted !== undefined || can('posts')
+  const results = post.resultsVisible
     ? `<div class="result">${voted !== undefined ? 'Vote recorded ? ' : ''}${total} votes<ul>${post.options.map((choice, index) => `<li>${esc(choice)} ? ${Math.round(100 * post.votes[index] / (total || 1))}%${voted === index ? ' (your vote)' : ''}</li>`).join('')}</ul></div>` : '';
   if (voted !== undefined) return results;
   return results + `<form data-action="vote" data-id="${esc(post.id)}">${post.options.map((choice, index) => `<label class="choice"><input type="radio" name="choice" value="${index}" required>${esc(choice)}</label>`).join('')}<button class="primary">Cast vote</button></form>`;
@@ -55,9 +57,11 @@ function fantasy() {
 function quiz() {
   const question = state.quiz;
   const result = question.result;
-  return heading('Daily Quiz', 'Answer one MUN question each day and earn 3 points for a correct answer.') +
-    `<section class="card"><span class="eyebrow">${esc(question.date)}</span><h2>${esc(question.question)}</h2>${result
-      ? `<div class="result" role="status">${result.correct ? 'Correct. You earned 3 points.' : 'Correct answer: ' + esc(result.answer)} <p>${esc(result.explanation)}</p></div>`
+  const intro = heading('Daily Quiz', 'Answer the question scheduled for today.');
+  if (!question.id && !result) return intro + '<div class="card"><p>No quiz is scheduled for today.</p></div>';
+  return intro +
+    `<section class="card"><span class="eyebrow">${esc(question.date)}</span><h2>${esc(question.question || 'Completed quiz')}</h2>${result
+      ? `<div class="result" role="status">${result.correct ? question.reward ? 'Correct. You earned ' + question.reward + ' points.' : 'Correct.' : 'Correct answer: ' + esc(result.answer)} <p>${esc(result.explanation)}</p>${safeUrl(result.sourceUrl) ? `<a class="text-link" href="${safeUrl(result.sourceUrl)}">Read the source ?</a>` : ''}</div>`
       : `<form data-action="quiz" data-id="${question.id}">${question.options.map((option, index) => `<label class="choice"><input type="radio" name="choice" value="${index}" required>${esc(option)}</label>`).join('')}<button class="primary">Submit answer</button></form>`}</section>`;
 }
 const knowledge = [
@@ -70,7 +74,7 @@ const knowledge = [
   { title: 'Human rights', match: /human rights|udhr/i, text: 'The Universal Declaration of Human Rights was adopted by the UN General Assembly in 1948. Use its text to identify the articles relevant to your committee topic.', source: 'https://www.un.org/en/about-us/universal-declaration-of-human-rights' }
 ];
 function assistant() {
-  return heading('MUN Assistant', state.aiEnabled ? 'Ask about debate, research and procedure using the club library.' : 'Browse prepared answers and official sources while the AI service is being configured.') +
+  return '<a class="text-link" href="#resources">Resource library ?</a>' + heading('MUN Assistant', state.aiEnabled ? 'Ask about debate, research and procedure using the club library.' : 'Browse prepared answers and official sources while the AI service is being configured.') +
     `<section class="card"><div class="actions">${knowledge.slice(0, 5).map(item => `<button data-prompt="${item.title}">${item.title}</button>`).join('')}</div>
     <div aria-live="polite">${conversation.map(({ question, reply }) => `<div class="reply"><strong>${esc(question)}</strong><p>${esc(reply.text)}</p><a class="text-link" href="${safeUrl(reply.source)}">Official UN source ↗</a></div>`).join('')}</div>
     <form data-action="assistant"><label>Your question<input name="question" required maxlength="350" placeholder="How do I structure a draft resolution?"></label><button class="primary">Ask assistant</button></form></section>`;
@@ -92,41 +96,54 @@ function profile() {
   const p = state.profile;
   return heading('My Profile', 'Manage your delegate details and review your club activity.') + stats() +
     `<div class="grid"><section class="card stack">${safeUrl(p.photo) ? `<img class="profile-photo" src="${safeUrl(p.photo)}" alt="Profile photo">` : ''}<div><h2>${esc(p.name)}</h2><p>Member · ${esc(p.committee)} · ${esc(p.position)}</p></div>
-    <form data-action="profile"><label>Display name<input name="name" required maxlength="60" value="${esc(p.name)}"></label><label>Committee<input name="committee" maxlength="60" value="${esc(p.committee)}"></label><label>Position<input name="position" maxlength="60" value="${esc(p.position)}"></label><label>Profile photo URL<input name="photo" type="url" pattern="https://.+" value="${esc(p.photo)}"></label><button class="primary">Save profile</button></form></section>
-    <section class="card stack"><h2>Achievements</h2><p>${points() >= 100 ? '✦ Rising Star · Reached 100 points' : 'Reach 100 points to unlock Rising Star.'}</p><h2>Participation history</h2>${pointHistory()}</section></div>`;
+    <form data-action="profile"><label>Display name<input name="name" required maxlength="60" value="${esc(p.name)}"></label><label>Profile photo URL<input name="photo" type="url" pattern="https://.+" value="${esc(p.photo)}"></label><button class="primary">Save profile</button></form></section>
+    <section class="card stack"><h2>Achievements</h2>${state.permissions.length ? '<a class="button" href="#admin">Board workspace</a>' : ''}<p>${points() >= 100 ? '✦ Rising Star · Reached 100 points' : 'Reach 100 points to unlock Rising Star.'}</p><h2>Attendance</h2>${activitiesList(state.attendance) || "<p>No attendance has been recorded.</p>"}<h2>Points history</h2>${pointHistory()}</section></div>`;
 }
 
 const can = permission => state.permissions.includes(permission);
 function admin() {
-  const intro = heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
+  const intro = '<a class="text-link" href="#profile">? Member profile</a>' + heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
   if (!state.permissions.length) return intro + '<div class="card"><p>This workspace is available to authorized board members.</p></div>';
   const editing = state.posts.find(post => post.id === editingPost);
   const postPanel = can('posts') ? `<section class="card stack"><h2>${editing ? 'Edit post' : 'Publish to Feed'}</h2><form id="post-editor" data-action="publish" data-id="${esc(editing?.id)}">
       <label>Type<select name="type">${types.map(type => `<option ${type === editing?.type ? 'selected' : ''}>${type}</option>`).join('')}</select></label>
+      ${state.profile.role === 'Head' ? '<p>Audience: ' + esc(state.profile.committee) + '</p>' : `<label>Audience<select name="committee"><option value="">Entire club</option>${state.committees.map(item => `<option ${item.name === editing?.committee ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label>`}
       <label>Title<input name="title" maxlength="100" required value="${esc(editing?.title)}"></label><label>Message<textarea name="body" maxlength="1500" required>${esc(editing?.body)}</textarea></label>
       <label>Poll choices (one per line)<textarea name="options" maxlength="400">${esc(editing?.options.join('\n'))}</textarea></label><button class="primary">${editing ? 'Save changes' : 'Publish'}</button></form>${editing ? '<button data-cancel-edit>Cancel editing</button>' : ''}</section>
-      <section class="card stack"><h2>Manage posts</h2>${postOrder().map(post => `<div><strong>${esc(post.title)}</strong><div class="actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button data-delete="${esc(post.id)}">Delete</button></div></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
+      <section class="card stack"><h2>Manage posts</h2>${postOrder().filter(post => post.manageable).map(post => `<div><strong>${esc(post.title)}</strong><div class="actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button data-delete="${esc(post.id)}">Delete</button></div></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
   const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${state.members.map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>` : '';
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
+    <section class="card stack"><h2>Schedule a quiz</h2><form data-action="schedule-quiz"><label>Question<select name="question" required>${state.quizBank.map(item => `<option value="${item.id}">${esc(item.question)}</option>`).join('')}</select></label><label>Cairo date<input type="date" name="date" min="${esc(state.quiz.date)}" required></label><label>Reward<select name="reward"><option>0</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label>Source URL<input type="url" name="source" required maxlength="500"></label><button class="primary">Schedule quiz</button></form></section>
     <section class="card stack"><h2>Add resource</h2><form data-action="resource"><label>Title<input name="title" required maxlength="100"></label><label>Category<input name="category" required maxlength="60"></label><label>Material<textarea name="body" required maxlength="3500"></textarea></label><label>Link<input type="url" name="url" maxlength="500"></label><button class="primary">Add resource</button></form></section>` : '';
-  const memberPanel = can('members') ? `<section class="card stack"><h2>Members</h2><p>${state.members.length} active ? ${state.posts.length} posts</p>${state.boardMembers.filter(member => member.role !== 'President').map(member => `<form class="news" data-action="member" data-id="${esc(member.id)}"><h3>${esc(member.name)}</h3><p>${esc(member.email)}</p><label>Role<select name="role">${['Member', 'Head', 'Vice President', 'Assigned Admin'].map(role => `<option ${role === member.role ? 'selected' : ''}>${role}</option>`).join('')}</select></label><label>Status<select name="active"><option value="1" ${member.active ? 'selected' : ''}>Active</option><option value="0" ${member.active ? '' : 'selected'}>Inactive</option></select></label><button>Save member</button></form>`).join('') || '<p>No other members have signed in yet.</p>'}</section>` : '';
-  return intro + `<div class="admin-grid">${postPanel}${pointsPanel}${learningPanel}${memberPanel}</div>`;
+  const memberPanel = can('members') ? `<section class="card stack"><h2>Members</h2><p>${state.members.length} active ? ${state.posts.length} posts</p>${state.boardMembers.filter(member => member.role !== 'President').map(member => `<form class="news" data-action="member" data-id="${esc(member.id)}"><h3>${esc(member.name)}</h3><p>${esc(member.email)}</p><label>Role<select name="role">${['Member', 'Head', 'Vice President', 'Assigned Admin'].map(role => `<option ${role === member.role ? 'selected' : ''}>${role}</option>`).join('')}</select></label><label>Committee<select name="committee"><option value="">Unassigned</option>${state.committees.map(item => `<option ${item.name === member.committee ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label><label>Position<input name="position" maxlength="60" value="${esc(member.position)}"></label><label>Status<select name="active"><option value="1" ${member.active ? 'selected' : ''}>Active</option><option value="0" ${member.active ? '' : 'selected'}>Inactive</option></select></label><button>Save member</button></form>`).join('') || '<p>No other members have signed in yet.</p>'}</section>` : '';
+  const activityPanel = can('activities') ? `<section class="card stack"><h2>Publish activity</h2>
+      <form data-action="activity"><label>Title<input name="title" required maxlength="100"></label><label>Type<select name="kind"><option>Event</option><option>Training</option><option>Competition</option><option>Challenge</option><option>Organizing</option></select></label><label>Start time in your device timezone<input name="starts" type="datetime-local" required></label><label>Audience<select name="committee"><option value="">Entire club</option>${state.committees.map(item => `<option>${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Publish activity</button></form>
+      <h2>Record attendance</h2><form data-action="attendance"><label>Activity<select name="activity" required>${state.boardActivities.map(item => `<option value="${esc(item.id)}">${esc(item.title)} ? ${esc(clubTime(item.starts_at))} Cairo</option>`).join('')}</select></label><label>Member<select name="member" required>${state.members.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Record attendance</button></form></section>` : '';
+  return intro + `<div class="admin-grid">${postPanel}${pointsPanel}${learningPanel}${memberPanel}${activityPanel}${can('members') ? '<section class="card stack"><h2>Add committee</h2><form data-action="committee"><label>Name<input name="name" maxlength="60" required></label><button class="primary">Add committee</button></form></section>' : ''}</div>`;
 }
-const views = { home, feed, fantasy, assistant, resources, quiz, profile, admin };
+function notifications() {
+  const entries = state.notifications.map(item => `<article class="news"><div class="label">${esc(item.kind)}${item.read_at ? '' : ' ? Unread'}</div><h3><a href="${esc(item.route)}">${esc(item.title)}</a></h3>${item.read_at ? '' : `<button data-read="${esc(item.id)}">Mark as read</button>`}</article>`).join('');
+  return heading('Inbox', 'Recent club and account notifications.') + `<section class="card stack">${state.unreadNotifications ? '<button data-read-all>Mark all as read</button>' : ''}${entries || '<p>No notifications yet.</p>'}</section>`;
+}
+const views = { home, feed, fantasy, assistant, resources, quiz, profile, admin, notifications };
+
 function render() {
   document.body.classList.toggle('signed-out', !state);
+  document.body.classList.toggle('admin-page', Boolean(state && location.hash === '#admin'));
   if (!state) {
-    content.innerHTML = `<section class="hero login"><div class="hero-copy"><span class="eyebrow">MIU Model United Nations &amp; Arab League</span><h1>Member portal</h1><p>Sign in to follow club updates, prepare for committee and take part in club activities.</p>${session.googleReady ? '<a class="button primary" href="/auth/google">Continue with Google</a>' : '<p role="status">' + esc(session.message || 'Google sign-in is awaiting setup.') + '</p>'}</div><img class="hero-art" src="logo.jpg" alt="MIU Model United Nations and Arab League XIX emblem"></section>`;
+    content.innerHTML = `<section class="hero login"><div class="hero-copy"><span class="eyebrow">MIU Model United Nations &amp; Arab League</span><h1>Member portal</h1><p>Sign in to follow club updates, prepare for committee and take part in club activities.</p>${new URLSearchParams(location.search).get('membership') === 'pending' ? '<p role="status">Ask the club board to approve your membership before you sign in.</p>' : ''}${session.googleReady ? '<a class="button primary" href="/auth/google">Continue with Google</a>' : '<p role="status">' + esc(session.message || 'Google sign-in is awaiting setup.') + '</p>'}</div><img class="hero-art" src="logo.jpg" alt="MIU Model United Nations and Arab League XIX emblem"></section>`;
     return;
   }
   document.querySelector('[href="#admin"]').hidden = !state.permissions.length;
   const requested = location.hash.slice(1);
   const route = Object.hasOwn(views, requested) ? requested : 'home';
+  document.querySelector('#inbox-link').textContent = 'Inbox' + (state.unreadNotifications ? ' (' + state.unreadNotifications + ')' : '');
   document.querySelector('#crumb').textContent = 'Club portal / ' + pages[route];
   document.querySelector('#account-name').textContent = state.profile.name;
   document.querySelector('#initials').textContent = state.profile.name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
-  document.querySelectorAll('.sidebar a').forEach(link => {
-    if (link.hash === '#' + route && !link.classList.contains('brand')) link.setAttribute('aria-current', 'page');
+  document.querySelectorAll('.sidebar a, .mobile-tabs a').forEach(link => {
+    const activeRoute = link.closest('.mobile-tabs') ? ({ quiz: 'home', resources: 'assistant' }[route] || route) : route;
+    if (link.hash === '#' + activeRoute && !link.classList.contains('brand')) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
   content.innerHTML = views[route]() + (notice ? `<div class="notice" role="status">${esc(notice)}</div>` : '');
@@ -166,6 +183,7 @@ async function loadSession() {
 async function perform(control, operation) {
   if (busy) return;
   busy = true;
+  document.body.setAttribute('aria-busy', 'true');
   control.disabled = true;
   try {
     await operation();
@@ -181,6 +199,7 @@ async function perform(control, operation) {
   } finally {
     control.disabled = false;
     busy = false;
+    document.body.removeAttribute('aria-busy');
   }
 }
 async function update(action, fields) {
@@ -200,6 +219,8 @@ content.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!state || !button || button.form || busy) return;
   const { filter, scope: period, prompt, edit, cancelEdit, pin, delete: remove } = button.dataset;
+  if (button.dataset.read) return perform(button, () => update('notification-read', { id: button.dataset.read }));
+  if (button.dataset.readAll !== undefined) return perform(button, () => update('notifications-read-all', {}));
   if (filter) feedFilter = filter;
   if (period) scope = period;
   if (prompt) return perform(button, () => ask(prompt));
@@ -224,6 +245,7 @@ content.addEventListener('submit', event => {
   if (action === 'quiz') fields.date = state.quiz.date;
   perform(form.querySelector('button'), async () => {
     if (action === 'assistant') return ask(fields.question);
+    if (action === 'activity') fields.starts = new Date(fields.starts).toISOString();
     await update(action, fields);
     if (action === 'publish') editingPost = '';
   });
