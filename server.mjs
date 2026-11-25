@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { createHash, randomBytes, createPublicKey, verify } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import express from 'express';
 import { z } from 'zod';
 import { profileUpdate } from './packages/contracts/src/common.mjs';
@@ -566,6 +567,22 @@ const assets = {
   '/icons/maskable.png': [new URL('./dist/icons/maskable.png', import.meta.url), 'image/png'],
   '/icons/apple.png': [new URL('./dist/icons/apple.png', import.meta.url), 'image/png']
 };
+// Read each static file once per instance; text is pre-gzipped and every file gets an ETag for 304 revalidation.
+const loadedAssets = new Map();
+function loadAsset(path) {
+  if (!loadedAssets.has(path)) {
+    const [file, mime] = assets[path];
+    const body = readFileSync(file);
+    const image = mime.startsWith('image/');
+    loadedAssets.set(path, {
+      mime, body,
+      etag: '"' + createHash('sha256').update(body).digest('base64url').slice(0, 22) + '"',
+      gzip: image ? null : gzipSync(body, { level: 9 }),
+      cache: image ? 'public, max-age=86400' : 'no-cache'
+    });
+  }
+  return loadedAssets.get(path);
+}
 const app = express();
 app.disable('x-powered-by');
 app.use(async (req, res) => {
@@ -594,10 +611,14 @@ app.use(async (req, res) => {
       }
     }
     if (req.method === 'GET' && Object.hasOwn(assets, path)) {
-      const [file, mime] = assets[path];
-      const asset = readFileSync(file);
-      res.writeHead(200, { 'Content-Type': mime });
-      return res.end(asset);
+      const asset = loadAsset(path);
+      res.setHeader('Cache-Control', asset.cache);
+      res.setHeader('ETag', asset.etag);
+      res.setHeader('Vary', 'Accept-Encoding');
+      if (req.headers['if-none-match'] === asset.etag) { res.writeHead(304); return res.end(); }
+      const gzip = asset.gzip && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+      res.writeHead(200, { 'Content-Type': asset.mime, ...(gzip && { 'Content-Encoding': 'gzip' }) });
+      return res.end(gzip ? asset.gzip : asset.body);
     }
     if (req.method === 'GET' && (googleStarts.includes(path) || googleCallbacks.includes(path))) return await googleLogin(req, res, url);
     const member = await memberFor(req);
