@@ -10,11 +10,17 @@ import { createDatabase } from './database.mjs';
 
 const env = process.env;
 const port = Number(env.PORT || 3000);
-const origin = new URL(env.APP_ORIGIN || 'http://localhost:' + port).origin;
+const origin = new URL(env.APP_ORIGIN || env.APP_URL || 'http://localhost:' + port).origin;
 const secure = origin.startsWith('https:');
 if (!secure && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) throw Error('APP_ORIGIN must use HTTPS outside localhost.');
-const redirectUri = origin + '/auth/google/callback';
-const owner = (env.BOARD_OWNER_EMAIL || '').trim().toLowerCase();
+const googleStarts = ['/api/auth/google', '/auth/google'];
+const googleCallbacks = ['/api/auth/google/callback', '/auth/google/callback'];
+const googleCallback = new URL(env.GOOGLE_CALLBACK_URL || origin + googleCallbacks[0]);
+if (googleCallback.origin !== origin || !googleCallbacks.includes(googleCallback.pathname) ||
+    googleCallback.search || googleCallback.hash || googleCallback.username || googleCallback.password) {
+  throw Error('GOOGLE_CALLBACK_URL must match a Google callback route on APP_ORIGIN.');
+}
+const redirectUri = googleCallback.href;
 const { run, get, all, transact, close } = await createDatabase();
 const json = JSON.stringify;
 const parse = JSON.parse;
@@ -23,12 +29,12 @@ const digest = value => createHash('sha256').update(value).digest('base64url');
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const addQuiz = (question, options, answer, explanation, starts) =>
   run('INSERT INTO mun_quizzes(question, options, answer, explanation, starts) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING', question, json(options), answer, explanation, starts);
+const addResource = (title, category, body, url) =>
+  run('INSERT INTO mun_resources(title, category, body, url) VALUES (?,?,?,?) ON CONFLICT DO NOTHING', title, category, body, url);
 if (env.NODE_ENV === 'test' || env.MUN_SEED === 'true') {
 await addQuiz('Which UN body includes all UN Member States?', ['Security Council', 'General Assembly', 'International Court of Justice'], 1, 'All UN Member States are represented in the General Assembly.', '2020-01-01');
 await addQuiz('In which year did the UN Charter enter into force?', ['1919', '1945', '1950'], 1, 'The UN Charter entered into force on 24 October 1945.', '2020-01-01');
 await addQuiz('Which organ is the principal judicial organ of the UN?', ['Economic and Social Council', 'Secretariat', 'International Court of Justice'], 2, 'The International Court of Justice settles legal disputes between states and gives advisory opinions.', '2020-01-01');
-const addResource = (title, category, body, url) =>
-  run('INSERT INTO mun_resources(title, category, body, url) VALUES (?,?,?,?) ON CONFLICT DO NOTHING', title, category, body, url);
 await addResource('Model UN Guide', 'Beginner guide', 'Start by learning your committee mandate, researching your country’s position, and drafting proposals to discuss with other delegates.', 'https://www.un.org/en/model-united-nations');
 await addResource('General Assembly Rules of Procedure', 'Procedure', 'Official rules for the General Assembly. In a simulation, follow any conference-specific rules distributed by your chair.', 'https://www.un.org/en/ga/about/ropga/');
 await addResource('UN Member States', 'Research', 'Locate your country’s permanent mission, then look for official statements, voting records and positions on the agenda.', 'https://www.un.org/en/about-us/member-states');
@@ -93,7 +99,7 @@ async function googleIdentity(idToken, nonce) {
 }
 async function googleLogin(req, res, url) {
   check(googleReady(), 'Google sign-in has not been configured by the site owner.', 503);
-  if (url.pathname === '/auth/google') {
+  if (googleStarts.includes(url.pathname)) {
     const state = token();
     const verifier = token();
     const nonce = token();
@@ -120,8 +126,13 @@ async function googleLogin(req, res, url) {
   const email = identity.email.toLowerCase();
   const name = (identity.name || email.split('@')[0]).slice(0, 60);
   const photo = typeof identity.picture === 'string' && identity.picture.startsWith('https://') ? identity.picture : '';
-  const joined = await get('INSERT INTO mun_members(id,email,name,photo,active) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET email=excluded.email RETURNING active', identity.sub, email, name, photo, email === owner ? 1 : 0);
-  if (!joined.active && email !== owner) return redirect(res, '/?membership=pending');
+  const joined = await transact(async () => {
+    await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
+    const existing = await get('SELECT id FROM mun_members WHERE lower(email)=? AND id<>? LIMIT 1', email, identity.sub);
+    check(!existing, 'This account needs board-assisted linking. Sign in with your original account or contact the board.', 409);
+    return get('INSERT INTO mun_members(id,email,name,photo,active) VALUES (?,?,?,?,0) ON CONFLICT(id) DO UPDATE SET email=excluded.email RETURNING active', identity.sub, email, name, photo);
+  });
+  if (!joined.active) return redirect(res, '/?membership=pending');
   const session = token();
   const old = cookie(req, 'mun_session');
   if (old) await run('DELETE FROM mun_sessions WHERE id=?', digest(old));
@@ -134,9 +145,7 @@ async function memberFor(req) {
   const session = cookie(req, 'mun_session');
   if (!session) return null;
   const member = await get('SELECT m.* FROM mun_members m JOIN mun_sessions s ON m.id=s.member WHERE s.id=? AND s.expires>?', digest(session), Date.now());
-  if (!member || (!member.active && member.email !== owner)) return null;
-  if (member.email === owner) member.role = 'President';
-  return member;
+  return member?.active ? member : null;
 }
 const rolePermissions = {
   President: ['members', 'posts', 'points', 'learning', 'activities'],
@@ -171,8 +180,8 @@ async function snapshot(member) {
       SUM(CASE WHEN t.date>=? THEN t.amount ELSE 0 END)::integer AS week,
       SUM(CASE WHEN t.date>=? THEN t.amount ELSE 0 END)::integer AS month
       FROM mun_members m LEFT JOIN mun_transactions t ON m.id=t.member
-      WHERE m.active=1 OR m.email=? GROUP BY m.id`, weekStart.toISOString().slice(0,10), monthStart, owner),
-    boardMembers: permissions.includes('members') ? (await all('SELECT id, name, email, role, active, committee, position FROM mun_members ORDER BY name')).map(entry => entry.email === owner ? { ...entry, role: 'President', active: 1 } : entry) : [],
+      WHERE m.active=1 GROUP BY m.id`, weekStart.toISOString().slice(0,10), monthStart),
+    boardMembers: permissions.includes('members') ? await all('SELECT id, name, email, role, active, committee, position FROM mun_members ORDER BY name') : [],
     committees: permissions.includes('members') || (permissions.includes('posts') && member.role !== 'Head') ? await all('SELECT name FROM mun_committees ORDER BY name') : [],
     posts: postRows.map(post => {
       const options = parse(post.options);
@@ -345,7 +354,7 @@ async function mutate(path, member, body) {
     requirePermission(member, 'points');
     const amount = Number(body.amount);
     check(Number.isInteger(amount) && amount !== 0 && Math.abs(amount) <= 100, 'Enter a nonzero adjustment between -100 and 100.');
-    const target = await get('SELECT id FROM mun_members WHERE id=? AND (active=1 OR email=?)', clean(body.member, 255, 'member'), owner);
+    const target = await get('SELECT id FROM mun_members WHERE id=? AND active=1', clean(body.member, 255, 'member'));
     check(target, 'Active member not found.', 404);
     const operation = clean(body.operation, 70, 'operation');
     check(/^[0-9a-f-]{36}$/i.test(operation), 'Invalid operation.');
@@ -360,7 +369,7 @@ async function mutate(path, member, body) {
   if (path === 'member') {
     requirePermission(member, 'members');
     const target = await get('SELECT * FROM mun_members WHERE id=?', clean(body.id, 255, 'member'));
-    check(target && target.email !== owner && target.id !== member.id, 'That account is managed by configuration.', 403);
+    check(target && target.role !== 'President' && target.id !== member.id, 'That account requires a separate administrative review.', 403);
     check(Object.hasOwn(rolePermissions, body.role) && body.role !== 'President' && ['0', '1'].includes(body.active), 'Invalid member settings.');
     const committee = clean(body.committee ?? target.committee, 60, 'committee', true);
     const position = clean(body.position ?? target.position, 60, 'position', true);
@@ -463,6 +472,24 @@ async function askAssistant(member, body) {
   throw new HttpError(503, 'The assistant is temporarily unavailable. Visit the resource library for official guidance.');
 }
 
+async function searchLibrary(body) {
+  const question = clean(body.question, 350, 'question');
+  const terms = [...new Set(question.toLowerCase().match(/[\p{L}]{3,}/gu) || [])]
+    .filter(term => !['how', 'what', 'which', 'explain', 'about', 'the', 'for', 'can', 'you', 'help', 'with', 'draft', 'write'].includes(term))
+    .slice(0, 10);
+  if (!terms.length) return { text: 'Try searching for a committee, country, position paper, or rule of procedure.', sources: [] };
+  const entries = await all(`WITH query AS (SELECT to_tsquery('simple', ?) AS terms)
+    SELECT title, url, LEFT(body, 420) AS excerpt
+    FROM mun_resources CROSS JOIN query
+    WHERE to_tsvector('simple', COALESCE(title,'') || ' ' || COALESCE(category,'') || ' ' || COALESCE(body,'')) @@ query.terms
+    ORDER BY ts_rank(to_tsvector('simple', COALESCE(title,'') || ' ' || COALESCE(category,'') || ' ' || COALESCE(body,'')), query.terms) DESC, id
+    LIMIT 4`, terms.join(' | '));
+  return {
+    text: entries.length ? 'These materials from the club library match your question.' : 'No matching materials in the club library.',
+    sources: entries
+  };
+}
+
 const assets = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
@@ -499,7 +526,7 @@ app.use(async (req, res) => {
       res.writeHead(200, { 'Content-Type': mime });
       return res.end(asset);
     }
-    if (req.method === 'GET' && ['/auth/google', '/auth/google/callback'].includes(path)) return await googleLogin(req, res, url);
+    if (req.method === 'GET' && (googleStarts.includes(path) || googleCallbacks.includes(path))) return await googleLogin(req, res, url);
     const member = await memberFor(req);
     if (req.method === 'GET' && path === '/api/session') return respond(res, 200, member ? { signedIn: true, data: await snapshot(member) } : { signedIn: false, googleReady: googleReady() });
     check(path.startsWith('/api/') && req.method === 'POST', 'Page not found.', 404);
@@ -515,6 +542,7 @@ app.use(async (req, res) => {
     const currentMember = await memberFor(req);
     check(currentMember, 'Sign in with Google to continue.', 401);
     if (path === '/api/assistant') return respond(res, 200, await askAssistant(currentMember, data));
+    if (path === '/api/assistant/library') return respond(res, 200, await searchLibrary(data));
     const message = await mutate(path.slice(5), currentMember, data);
     const refreshedMember = await memberFor(req);
     check(refreshedMember, 'Sign in with Google to continue.', 401);
@@ -531,4 +559,14 @@ function startServer() {
 }
 if (!env.VERCEL && process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) startServer();
 export { app, startServer };
+export async function provisionPresident(subject) {
+  return transact(async () => {
+    await get('SELECT pg_advisory_xact_lock(1282370242)');
+    const existing = await get("SELECT id FROM mun_members WHERE role='President' AND active=1 LIMIT 1");
+    check(!existing, 'An active President already exists.', 409);
+    check((await run("UPDATE mun_members SET role='President', active=1 WHERE id=?", subject)).changes === 1, 'Google account has not registered.');
+    await audit(subject, 'president.provision', subject);
+  });
+}
+export { close as closeDatabase };
 export default app;

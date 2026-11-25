@@ -74,9 +74,12 @@ const knowledge = [
   { title: 'Human rights', match: /human rights|udhr/i, text: 'The Universal Declaration of Human Rights was adopted by the UN General Assembly in 1948. Use its text to identify the articles relevant to your committee topic.', source: 'https://www.un.org/en/about-us/universal-declaration-of-human-rights' }
 ];
 function assistant() {
-  return '<a class="text-link" href="#resources">Resource library ?</a>' + heading('MUN Assistant', state.aiEnabled ? 'Ask about debate, research and procedure using the club library.' : 'Browse prepared answers and official sources while the AI service is being configured.') +
-    `<section class="card"><div class="actions">${knowledge.slice(0, 5).map(item => `<button data-prompt="${item.title}">${item.title}</button>`).join('')}</div>
-    <div aria-live="polite">${conversation.map(({ question, reply }) => `<div class="reply"><strong>${esc(question)}</strong><p>${esc(reply.text)}</p><a class="text-link" href="${safeUrl(reply.source)}">Official UN source ↗</a></div>`).join('')}</div>
+  return '<a class="text-link" href="#resources">Resource library ?</a>' + heading('MUN Assistant', state.aiEnabled ? 'Ask about debate, research and procedure using the club library.' : 'Search the club library and read prepared guidance with sources.') +
+    `<section class="card"><div class="actions">${knowledge.slice(0, 5).map(item => `<button data-prompt="${item.title}">${item.title}</button>`).join('')}<button data-new-chat>New chat</button></div>
+    <div aria-live="polite">${conversation.map(({ question, reply }, index) => `<div class="reply"><strong>${esc(question)}</strong><p>${esc(reply.text)}</p>
+      ${safeUrl(reply.source) ? `<a class="text-link" href="${safeUrl(reply.source)}">Official UN source</a>` : ''}
+      ${(reply.sources || []).map(source => `<div class="news"><strong>${esc(source.title)}</strong>${source.excerpt ? `<p>${esc(source.excerpt)}</p>` : ''}${safeUrl(source.url) ? `<a class="text-link" href="${safeUrl(source.url)}">Open source</a>` : ''}</div>`).join('')}
+      <button data-copy="${index}">Copy response</button></div>`).join('')}</div>
     <form data-action="assistant"><label>Your question<input name="question" required maxlength="350" placeholder="How do I structure a draft resolution?"></label><button class="primary">Ask assistant</button></form></section>`;
 }
 async function ask(question) {
@@ -84,9 +87,9 @@ async function ask(question) {
     conversation.push({ question, reply: await api("assistant", { question }) });
     return;
   }
-  const reply = knowledge.find(item => item.title === question) || knowledge.find(item => item.match.test(question)) ||
-    { text: 'I don’t have a prepared answer for that question. Try an official UN search or explore the club resource library.', source: 'https://www.un.org/en/' };
-  conversation.push({ question, reply });
+  const prepared = knowledge.find(item => item.title === question) || knowledge.find(item => item.match.test(question));
+  const matches = await api('assistant/library', { question });
+  conversation.push({ question, reply: prepared ? { ...matches, ...prepared } : matches });
 }
 function resources() {
   return heading('Resources', 'Guides, templates and primary sources for committee preparation.') +
@@ -131,7 +134,7 @@ function render() {
   document.body.classList.toggle('signed-out', !state);
   document.body.classList.toggle('admin-page', Boolean(state && location.hash === '#admin'));
   if (!state) {
-    content.innerHTML = `<section class="hero login"><div class="hero-copy"><span class="eyebrow">MIU Model United Nations &amp; Arab League</span><h1>Member portal</h1><p>Sign in to follow club updates, prepare for committee and take part in club activities.</p>${new URLSearchParams(location.search).get('membership') === 'pending' ? '<p role="status">Ask the club board to approve your membership before you sign in.</p>' : ''}${session.googleReady ? '<a class="button primary" href="/auth/google">Continue with Google</a>' : '<p role="status">' + esc(session.message || 'Google sign-in is awaiting setup.') + '</p>'}</div><img class="hero-art" src="logo.jpg" alt="MIU Model United Nations and Arab League XIX emblem"></section>`;
+    content.innerHTML = `<section class="hero login"><div class="hero-copy"><span class="eyebrow">MIU Model United Nations &amp; Arab League</span><h1>Member portal</h1><p>Sign in to follow club updates, prepare for committee and take part in club activities.</p>${new URLSearchParams(location.search).get('membership') === 'pending' ? '<p role="status">Ask the club board to approve your membership before you sign in.</p>' : ''}${session.googleReady ? '<a class="button primary" href="/api/auth/google">Continue with Google</a>' : '<p role="status">' + esc(session.message || 'Google sign-in is awaiting setup.') + '</p>'}</div><img class="hero-art" src="logo.jpg" alt="MIU Model United Nations and Arab League XIX emblem"></section>`;
     return;
   }
   document.querySelector('[href="#admin"]').hidden = !state.permissions.length;
@@ -218,6 +221,16 @@ document.querySelector('#logout').addEventListener('click', event => perform(eve
 content.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!state || !button || button.form || busy) return;
+  if (button.dataset.newChat !== undefined) {
+    conversation = [];
+    render();
+    return;
+  }
+  if (button.dataset.copy !== undefined) return perform(button, async () => {
+    const { reply } = conversation[Number(button.dataset.copy)];
+    await navigator.clipboard.writeText(reply.text);
+    notice = 'Response copied.';
+  });
   const { filter, scope: period, prompt, edit, cancelEdit, pin, delete: remove } = button.dataset;
   if (button.dataset.read) return perform(button, () => update('notification-read', { id: button.dataset.read }));
   if (button.dataset.readAll !== undefined) return perform(button, () => update('notifications-read-all', {}));

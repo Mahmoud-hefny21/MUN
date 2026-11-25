@@ -11,6 +11,7 @@
     "build": "node --check server.mjs && node --check database.mjs && node --check dist/app.js && node --check dist/sw.js",
     "typecheck": "tsc -p tsconfig.base.json",
     "test": "node --test test/portal.test.mjs",
+    "admin:provision-president": "node --env-file-if-exists=.env provision-president.mjs",
     "db:migrate:deploy": "node --env-file-if-exists=.env migrate.mjs"
   },
   "dependencies": {

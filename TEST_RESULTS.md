@@ -11,3 +11,5 @@ Local Windows and Node.js 26.13.1 with isolated PGlite, synthetic Google account
 | `npm audit --audit-level=high` | Registry reported zero dependency vulnerabilities |
 
 The real browser connected to the local application and its isolated database. Sign-in used a signed Google fixture. Screenshots at 320, 390, 768 and 1440 px were saved in [docs/qa/screenshots](docs/qa/screenshots). Home at 390 px was manually inspected. Full visual review, Firefox, WebKit, physical device installation, live OAuth, live AI and push remain unverified. The syntax check is the build gate for the existing buildless frontend. The Vite production build remains pending.
+
+The OAuth/assistant follow-up passed type checking, syntax checks, the integration suite and Chromium browser verification. The browser searched the authenticated library and cleared the conversation with New chat. The suite checked that a new Google registration remains pending until explicit approval. A separate read-only Neon connectivity probe succeeded.

@@ -12,3 +12,5 @@
 Existing protections checked by the suite include OAuth state replay prevention, origin enforcement, board endpoint denial, quiz key omission, unique vote/quiz submissions and session revocation. The suite uses test-generated binary signatures and synthetic accounts. It exercises local defensive checks only.
 
 Open review items include persisted authentication rate limits, CSRF tokens, complete audit coverage, fine-grained grants, privacy/retention approval, HTML/script sanitization review, dependency scans in CI and a reviewed administrative recovery flow. No claim is made that high-severity application findings have been exhaustively ruled out.
+
+The OAuth update removes email-based administrative elevation. It checks Google subject and verified email, serializes sign-in per normalized email and directs conflicts to board-assisted review. There is no automatic transfer of an existing account to a different Google subject. Configure the Google client secret only through local or host secret settings. Keys previously shared in chat or screenshots should be revoked and replaced through the provider console.

@@ -70,3 +70,5 @@
     PRIMARY KEY(activity,member)
   );
   CREATE INDEX IF NOT EXISTS mun_attendance_member ON mun_attendance(member);
+  CREATE INDEX IF NOT EXISTS mun_resources_fts ON mun_resources USING GIN
+    (to_tsvector('simple', COALESCE(title,'') || ' ' || COALESCE(category,'') || ' ' || COALESCE(body,'')));

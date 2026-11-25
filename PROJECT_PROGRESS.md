@@ -23,3 +23,9 @@
 5. Validate remaining release gates, measure staging and Lighthouse targets, then seek board approval for rollout.
 
 See [requirements](REQUIREMENTS_TRACEABILITY.md) and [release status](FINAL_VERIFICATION_REPORT.md).
+
+## Google and assistant integration checkpoint
+
+- Added the same-origin `/api/auth/google/callback` contract with legacy route compatibility. OAuth registration no longer grants roles from environment email matching. The first President requires explicit operator provisioning.
+- Added authenticated PostgreSQL full-text lookup for the assistant. The portal renders actual library titles, excerpts and source links and keeps the current conversation in the page session.
+- Configured the nonsecret Google settings locally. Neon answered a read-only probe. No production migration, secret upload or provider activation was performed. The requested production URL returned a Vercel function failure.

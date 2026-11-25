@@ -4,11 +4,13 @@ The existing GitHub commit and the current working tree are different versions. 
 
 1. Create a separate, empty or anonymized Neon staging branch. Set its pooled URL as `DATABASE_URL` and its direct URL as `DIRECT_DATABASE_URL` in server secrets. Keep credentials outside Git.
 2. Review `schema.sql` against the destination and confirm a restore point. Run `npm run db:migrate:deploy` with the isolated direct URL. Run `npm start` for a local smoke test. The application exports Express from `server.mjs` for the Vercel preset.
-3. Use the exact preview origin in `APP_ORIGIN`, and configure the Google consent app and authorized callback at that origin followed by `/auth/google/callback`. Use authorized test accounts, including the configured board owner. Keep AI disabled for preview.
+3. Use the exact preview origin in `APP_ORIGIN`, and configure the Google consent app and authorized callback at that origin followed by `/api/auth/google/callback`. Use authorized test accounts. Keep external AI disabled for preview.
 4. Check health endpoints, static asset MIME types, Chrome install behavior, Google callback and sign-out, board approval, and member workflows on the deployed preview before considering release.
 5. Confirm repository visibility, branch protection, provider conditions and board approvals before enabling automatic deployments or promoting a build. The repository configuration requests disabled automatic Git deployments during development.
 
 Rollback the app to a previous known-good version only after checking schema compatibility. Keep additive tables in place. If compatibility fails, prefer forward repair and test it against a restored staging copy before changing production.
+
+The local callback is `http://localhost:3000/api/auth/google/callback`. The requested production callback is `https://mun-smoky.vercel.app/api/auth/google/callback`. Legacy projects can temporarily configure `GOOGLE_CALLBACK_URL` with the same-origin legacy path while changing the Google console. Before promoting, review the existing admin records. If the previous board owner was promoted solely by an environment variable, explicitly provision the verified, already registered account in the correct database before switching versions.
 
 ## Provider eligibility
 

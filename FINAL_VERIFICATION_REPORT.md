@@ -18,3 +18,17 @@ The [traceability matrix](REQUIREMENTS_TRACEABILITY.md) lists 33 grouped require
 - Preview and production deployment, real OAuth test credentials, and board approvals.
 
 See [test results](TEST_RESULTS.md), [security review](SECURITY_REPORT.md), [performance](PERFORMANCE_REPORT.md), [load baseline](LOAD_TEST_REPORT.md) and [deployment guide](DEPLOYMENT_GUIDE.md).
+
+## OAuth and knowledge-search verification checkpoint
+
+| Check | Status | Evidence |
+|---|---|---|
+| Google OAuth | BLOCKED live | Callback, signed Google fixture, one-time state, session and explicit admin provisioning passed locally. The live Google client secret was not supplied. |
+| Gemini / Groq APIs | BLOCKED | Provider age and audience terms prevent activation for this rollout. No external request was sent. |
+| Automatic provider fallback | BLOCKED live | Local club-library lookup was verified independently of providers. Live provider fallback remains unverified. |
+| Local environment | FAIL complete | Nonsecret Google settings and Neon configuration are present. Live OAuth needs a local client secret. |
+| Vercel environment | FAIL | Installed CLI reported logged out. The production root returned HTTP 500 with `FUNCTION_INVOCATION_FAILED`. No environment change or deploy occurred. |
+| Database connectivity | PASS | Read-only `SELECT 1` passed on the configured Neon database. The new index was tested in isolated fixtures. |
+| Core regression | PASS in covered scenarios | Integration suite and Chromium checks passed. Prisma and OneSignal remain pending from the earlier V5 audit. |
+| Security | PASS for checks run | Known credential format scan found no tracked Git history matches. Dependency audit returned zero. OAuth and role checks passed locally. |
+| Performance | FAIL target on local diagnostic | 140 simultaneous read requests from two fixture accounts, zero errors, p50 620 ms, p95 855 ms and p99 866 ms. Sustained staging, Lighthouse and 200-user stress were unverified. |

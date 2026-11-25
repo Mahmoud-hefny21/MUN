@@ -33,6 +33,13 @@ export async function verifyBrowser(base, session) {
       }
     }
     await page.goto(base + '/#home');
+    await page.evaluate(() => { location.hash = 'assistant'; });
+    await page.getByRole('textbox', { name: 'Your question' }).fill('rules of procedure');
+    await page.getByRole('button', { name: 'Ask assistant' }).click();
+    await page.getByText('General Assembly Rules of Procedure', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'New chat' }).click();
+    assert.equal(await page.getByText('General Assembly Rules of Procedure', { exact: true }).count(), 0);
+    await page.goto(base + '/#home');
     await page.evaluate(() => navigator.serviceWorker.ready);
     await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
     const keys = await page.evaluate(async () => {

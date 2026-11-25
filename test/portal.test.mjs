@@ -8,7 +8,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
   const origin = 'http://127.0.0.1:' + port;
   Object.assign(process.env, {
     APP_ORIGIN: origin, PORT: port, NODE_ENV: 'test', MUN_TEST_POSTGRES: 'memory',
-    GOOGLE_CLIENT_ID: 'fixture-client', GOOGLE_CLIENT_SECRET: 'fixture-secret', BOARD_OWNER_EMAIL: 'owner@example.test'
+    GOOGLE_CLIENT_ID: 'fixture-client', GOOGLE_CLIENT_SECRET: 'fixture-secret', GOOGLE_CALLBACK_URL: origin + '/api/auth/google/callback'
   });
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const clients = new Map();
@@ -28,7 +28,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     const token = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'test' })).toString('base64url') + '.' + payload;
     return Response.json({ id_token: token + '.' + sign('RSA-SHA256', Buffer.from(token), privateKey).toString('base64url') });
   };
-  const { startServer } = await import('../server.mjs');
+  const { startServer, provisionPresident } = await import('../server.mjs');
   const server = startServer();
   if (!server.listening) await once(server, 'listening');
   const base = 'http://127.0.0.1:' + server.address().port;
@@ -41,9 +41,10 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     const started = await get('/auth/google');
     assert.equal(started.status, 303);
     const auth = new URL(started.headers.get('location')).searchParams;
+    assert.equal(auth.get('redirect_uri'), origin + '/api/auth/google/callback');
     clients.set(user, { nonce: auth.get('nonce'), challenge: auth.get('code_challenge') });
     const cookie = started.headers.getSetCookie()[0].split(';')[0];
-    const callback = '/auth/google/callback?code=' + user + '&state=' + auth.get('state');
+    const callback = '/api/auth/google/callback?code=' + user + '&state=' + auth.get('state');
     const response = await get(callback, cookie);
     assert.equal(response.status, 303);
     assert.equal((await get(callback, cookie)).status, 400);
@@ -53,10 +54,16 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.match(await (await get('/')).text(), /id="logout"/);
     assert.match(await (await get('/app.js')).text(), /Continue with Google/);
     assert.equal((await (await get('/api/session')).json()).signedIn, false);
+    assert.equal(await login('owner'), undefined);
+    await provisionPresident('owner');
+    await assert.rejects(provisionPresident('owner'), /already exists/);
     const owner = await login('owner');
     assert.equal(await login('delegate'), undefined);
     assert.equal((await post('member', { id: 'delegate', role: 'Member', active: '1' }, owner)).status, 200);
     const member = await login('delegate');
+    const library = await (await post('assistant/library', { question: 'rules of procedure' }, member)).json();
+    assert.match(library.sources[0].title, /Rules of Procedure/);
+    assert.equal((await post('assistant/library', { question: 'rules of procedure' }, '')).status, 401);
     assert.equal((await post('profile', { name: 'Delegate', photo: '', role: 'President' }, member)).status, 400);
     const poll = { type: 'Poll', title: 'Workshop topic', body: 'Choose a subject', options: 'Debate\nResearch' };
     assert.equal((await post('publish', poll, member)).status, 403);
