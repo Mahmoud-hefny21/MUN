@@ -53,6 +53,11 @@ export async function verifyBrowser(base, session, memberSession) {
     await page.setViewportSize({ width: 320, height: 640 });
     await page.evaluate(() => { location.hash = 'admin'; });
     const boardSections = page.getByRole('navigation', { name: 'Board sections' });
+    const firstMember = page.locator('.member-row').first();
+    await firstMember.locator('summary').click();
+    await firstMember.getByRole('button', { name: 'Save member' }).waitFor();
+    await boardSections.getByRole('link', { name: 'Feed & polls' }).click();
+    await page.getByRole('heading', { name: 'Manage posts' }).waitFor();
     await boardSections.getByRole('link', { name: 'Roles & access' }).click();
     assert.equal(await page.getByRole('heading', { name: 'Publish activity' }).count(), 0);
     await page.getByLabel('Role name').fill('Browser editor');
