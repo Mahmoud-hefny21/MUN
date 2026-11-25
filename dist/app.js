@@ -105,7 +105,7 @@ function profile() {
 
 const can = permission => state.permissions.includes(permission);
 function admin() {
-  const intro = '<a class="text-link" href="#profile">? Member profile</a>' + heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
+  const intro = '<a class="text-link" href="#profile">Back to profile</a>' + heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
   if (!state.permissions.length) return intro + '<div class="card"><p>This workspace is available to authorized board members.</p></div>';
   const editing = state.posts.find(post => post.id === editingPost);
   const postPanel = can('posts') ? `<section class="card stack"><h2>${editing ? 'Edit post' : 'Publish to Feed'}</h2><form id="post-editor" data-action="publish" data-id="${esc(editing?.id)}">
@@ -116,9 +116,9 @@ function admin() {
       <section class="card stack"><h2>Manage posts</h2>${postOrder().filter(post => post.manageable).map(post => `<div><strong>${esc(post.title)}</strong><div class="actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button data-delete="${esc(post.id)}">Delete</button></div></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
   const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${state.members.map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>` : '';
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
-    <section class="card stack"><h2>Schedule a quiz</h2><form data-action="schedule-quiz"><label>Question<select name="question" required>${state.quizBank.map(item => `<option value="${item.id}">${esc(item.question)}</option>`).join('')}</select></label><label>Cairo date<input type="date" name="date" min="${esc(state.quiz.date)}" required></label><label>Reward<select name="reward"><option>0</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label>Source URL<input type="url" name="source" required maxlength="500"></label><button class="primary">Schedule quiz</button></form></section>
+    <section class="card stack"><h2>Schedule a quiz</h2>${state.quizBank.length ? `<form data-action="schedule-quiz"><label>Question<select name="question" required>${state.quizBank.map(item => `<option value="${item.id}">${esc(item.question)}</option>`).join('')}</select></label><label>Cairo date<input type="date" name="date" min="${esc(state.quiz.date)}" required></label><label>Reward<select name="reward"><option>0</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label>Source URL<input type="url" name="source" required maxlength="500"></label><button class="primary">Schedule quiz</button></form>` : '<p>Add a question to the quiz bank before scheduling.</p>'}</section>
     <section class="card stack"><h2>Add resource</h2><form data-action="resource"><label>Title<input name="title" required maxlength="100"></label><label>Category<input name="category" required maxlength="60"></label><label>Material<textarea name="body" required maxlength="3500"></textarea></label><label>Link<input type="url" name="url" maxlength="500"></label><button class="primary">Add resource</button></form></section>` : '';
-  const memberPanel = can('members') ? `<section class="card stack"><h2>Members</h2><p>${state.members.length} active ? ${state.posts.length} posts</p>${state.boardMembers.filter(member => member.role !== 'President').map(member => `<form class="news" data-action="member" data-id="${esc(member.id)}"><h3>${esc(member.name)}</h3><p>${esc(member.email)}</p><label>Role<select name="role">${state.boardRoles.map(role => `<option value="${esc(role)}" ${role === member.role ? 'selected' : ''}> ${esc(role)}</option>`).join('')}</select></label><label>Committee<select name="committee"><option value="">Unassigned</option>${state.committees.map(item => `<option ${item.name === member.committee ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label><label>Position<input name="position" maxlength="60" value="${esc(member.position)}"></label><label>Status<select name="active"><option value="1" ${member.active ? 'selected' : ''}>Active</option><option value="0" ${member.active ? '' : 'selected'}>Inactive</option></select></label><button>Save member</button></form>`).join('') || '<p>No other members have signed in yet.</p>'}</section>` : '';
+  const memberPanel = can('members') ? `<section class="card stack"><h2>Members</h2><p>${state.members.length} active members</p>${state.boardMembers.filter(member => member.role !== 'President').map(member => `<form class="news" data-action="member" data-id="${esc(member.id)}"><h3>${esc(member.name)}</h3><p>${esc(member.email)}</p><label>Role<select name="role">${state.boardRoles.map(role => `<option value="${esc(role)}" ${role === member.role ? 'selected' : ''}> ${esc(role)}</option>`).join('')}</select></label><label>Committee<select name="committee"><option value="">Unassigned</option>${state.committees.map(item => `<option ${item.name === member.committee ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label><label>Position<input name="position" maxlength="60" value="${esc(member.position)}"></label><label>Status<select name="active"><option value="1" ${member.active ? 'selected' : ''}>Active</option><option value="0" ${member.active ? '' : 'selected'}>Inactive</option></select></label><button>Save member</button></form>`).join('') || '<p>No other members have signed in yet.</p>'}</section>` : '';
   const rolePanel = can('members') ? `<section class="card stack"><h2>Assign a role by Google email</h2>
     <form data-action="member-email"><label>Google email<input type="email" name="email" maxlength="254" required></label>
     <label>Role<select name="role">${state.boardRoles.map(role => `<option>${esc(role)}</option>`).join('')}</select></label>
@@ -126,11 +126,26 @@ function admin() {
     ${state.boardInvites.map(invite => `<form data-action="member-invite-revoke"><p>${esc(invite.email)} ? ${esc(invite.role)}</p><input type="hidden" name="email" value="${esc(invite.email)}"><button>Revoke invitation</button></form>`).join('')}
     </section><section class="card stack"><h2>Create a role</h2><form data-action="custom-role"><label>Role name<input name="name" maxlength="40" required></label>
     <fieldset><legend>Club-wide permissions</legend>${[['posts','Manage feed and polls'],['points','Adjust points'],['learning','Manage quizzes and resources'],['activities','Manage activities and attendance']].map(([key, label]) => `<label class="choice"><input type="checkbox" name="permissions" value="${key}">${label}</label>`).join('')}</fieldset><button class="primary">Create role</button></form></section>` : '';
+  const attendanceActivities = state.boardActivities.filter(item => Date.parse(item.starts_at) <= Date.now());
   const activityPanel = can('activities') ? `<section class="card stack"><h2>Publish activity</h2>
       <form data-action="activity"><label>Title<input name="title" required maxlength="100"></label><label>Type<select name="kind"><option>Event</option><option>Training</option><option>Competition</option><option>Challenge</option><option>Organizing</option></select></label><label>Start time in your device timezone<input name="starts" type="datetime-local" required></label><label>Audience<select name="committee"><option value="">Entire club</option>${state.committees.map(item => `<option>${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Publish activity</button></form>
-      <h2>Record attendance</h2><form data-action="attendance"><label>Activity<select name="activity" required>${state.boardActivities.map(item => `<option value="${esc(item.id)}">${esc(item.title)} ? ${esc(clubTime(item.starts_at))} Cairo</option>`).join('')}</select></label><label>Member<select name="member" required>${state.members.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Record attendance</button></form></section>` : '';
+      </section><section class="card stack"><h2>Record attendance</h2>${attendanceActivities.length ? `<form data-action="attendance"><label>Activity<select name="activity" required>${attendanceActivities.map(item => `<option value="${esc(item.id)}">${esc(item.title)} ? ${esc(clubTime(item.starts_at))} Cairo</option>`).join('')}</select></label><label>Member<select name="member" required>${state.members.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label><button class="primary">Record attendance</button></form>` : '<p>No activities have started yet. Attendance becomes available when an activity starts.</p>'}</section>` : '';
   const delivery = state.pushDelivery ? `<section class="card stack"><h2>Push delivery</h2><p>Last 24 hours. Accepted messages are tracked by OneSignal.</p>${state.pushDelivery.map(item => `<p>${esc(item.state)} ? ${item.count}</p>`).join('') || '<p>No messages queued.</p>'}</section>` : '';
-  return intro + `<div class="admin-grid">${delivery}${postPanel}${pointsPanel}${learningPanel}${memberPanel}${rolePanel}${activityPanel}${can('members') ? '<section class="card stack"><h2>Add committee</h2><form data-action="committee"><label>Name<input name="name" maxlength="60" required></label><button class="primary">Add committee</button></form></section>' : ''}</div>`;
+  const committeePanel = can('members') ? '<section class="card stack"><h2>Add committee</h2><form data-action="committee"><label>Name<input name="name" maxlength="60" required></label><button class="primary">Add committee</button></form></section>' : '';
+  const sections = [
+    { id: 'members', label: 'Members', content: memberPanel + committeePanel },
+    { id: 'roles', label: 'Roles & access', content: rolePanel },
+    { id: 'feed', label: 'Feed & polls', content: postPanel },
+    { id: 'activities', label: 'Activities', content: activityPanel },
+    { id: 'points', label: 'Points', content: pointsPanel },
+    { id: 'learning', label: 'Quiz & resources', content: learningPanel },
+    { id: 'delivery', label: 'Push delivery', content: delivery }
+  ].filter(section => section.content);
+  const selected = sections.find(section => location.hash === '#admin/' + section.id) || sections[0];
+  const tabs = sections.map(section => `<a href="#admin/${section.id}" ${section === selected ? 'aria-current="page"' : ''}>${section.label}</a>`).join('');
+  return intro + `<nav class="admin-nav" aria-label="Board sections">${tabs}</nav>
+    ${notice ? `<div class="notice" role="status">${esc(notice)}</div>` : ''}
+    <div class="admin-grid${['points','delivery'].includes(selected.id) ? ' admin-grid-single' : ''}">${selected.content}</div>`;
 }
 function notifications() {
   const entries = state.notifications.map(item => `<article class="news"><div class="label">${esc(item.kind)}${item.read_at ? '' : ' ? Unread'}</div><h3><a href="${esc(item.route)}">${esc(item.title)}</a></h3>${item.read_at ? '' : `<button data-read="${esc(item.id)}">Mark as read</button>`}</article>`).join('');
@@ -145,13 +160,13 @@ const views = { home, feed, fantasy, assistant, resources, quiz, profile, admin,
 
 function render() {
   document.body.classList.toggle('signed-out', !state);
-  document.body.classList.toggle('admin-page', Boolean(state && location.hash === '#admin'));
+  const requested = location.hash.slice(1).split('/')[0];
+  document.body.classList.toggle('admin-page', Boolean(state && requested === 'admin'));
   if (!state) {
     content.innerHTML = `<section class="hero login"><div class="hero-copy"><span class="eyebrow">MIU Model United Nations &amp; Arab League</span><h1>Member portal</h1><p>Sign in to follow club updates, prepare for committee and take part in club activities.</p>${new URLSearchParams(location.search).get('membership') === 'pending' ? '<p role="status">Ask the club board to approve your membership before you sign in.</p>' : ''}${session.googleReady ? '<a class="button primary" href="/api/auth/google">Continue with Google</a>' : '<p role="status">' + esc(session.message || 'Google sign-in is awaiting setup.') + '</p>'}</div><img class="hero-art" src="logo.jpg" alt="MIU Model United Nations and Arab League XIX emblem"></section>`;
     return;
   }
   document.querySelector('[href="#admin"]').hidden = !state.permissions.length;
-  const requested = location.hash.slice(1);
   const route = Object.hasOwn(views, requested) ? requested : 'home';
   document.querySelector('#inbox-link').textContent = 'Inbox' + (state.unreadNotifications ? ' (' + state.unreadNotifications + ')' : '');
   document.querySelector('#crumb').textContent = 'Club portal / ' + pages[route];
@@ -162,7 +177,7 @@ function render() {
     if (link.hash === '#' + activeRoute && !link.classList.contains('brand')) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
-  content.innerHTML = views[route]() + (notice ? `<div class="notice" role="status">${esc(notice)}</div>` : '');
+  content.innerHTML = views[route]() + (notice && route !== 'admin' ? `<div class="notice" role="status">${esc(notice)}</div>` : '');
   notice = '';
 }
 window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });

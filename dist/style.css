@@ -40,6 +40,15 @@ main { margin-left: 230px; }
 .signed-out main { margin-left: 0; }
 .login { max-width: 1000px; margin: clamp(16px, 8vh, 100px) auto; }
 .admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.admin-grid-single { grid-template-columns: minmax(0, 640px); }
+.admin-nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--night); }
+.admin-nav a { min-height: 44px; padding: 8px 13px; font-weight: 600; }
+.admin-nav + .notice { margin: 0 0 16px; }
+.admin-page .card { border-radius: 12px; }
+.admin-page .card h2 { margin-bottom: 2px; }
+.admin-page fieldset { min-width: 0; margin: 0; padding: 6px 10px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.admin-page legend { padding-inline: 6px; color: var(--muted); }
+.admin-page .choice { min-height: 38px; }
 .topbar { height: 65px; border-bottom: 1px solid var(--line); padding: 0 clamp(20px, 4vw, 52px); display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: .88rem; }
 .topbar a, .gold { color: var(--bright); }
 #content { max-width: 1200px; margin: auto; padding: 30px clamp(20px, 4vw, 52px) 48px; }
@@ -96,6 +105,8 @@ form button { justify-self: start; }
 }
 @media (max-width: 640px) {
   .admin-grid { grid-template-columns: 1fr; }
+  .admin-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-nav a { padding-inline: 9px; }
   #content { padding-top: 18px; }
   .hero { grid-template-columns: 1fr; }
   .hero-copy { padding-bottom: 0; }

@@ -41,6 +41,9 @@ export async function verifyBrowser(base, session, memberSession) {
     await page.goto(base + '/#home');
     await page.setViewportSize({ width: 320, height: 640 });
     await page.evaluate(() => { location.hash = 'admin'; });
+    const boardSections = page.getByRole('navigation', { name: 'Board sections' });
+    await boardSections.getByRole('link', { name: 'Roles & access' }).click();
+    assert.equal(await page.getByRole('heading', { name: 'Publish activity' }).count(), 0);
     await page.getByLabel('Role name').fill('Browser editor');
     await page.getByLabel('Manage quizzes and resources').check();
     await page.getByRole('button', { name: 'Create role' }).click();
@@ -50,6 +53,10 @@ export async function verifyBrowser(base, session, memberSession) {
     await invite.getByLabel('Role').selectOption('Browser editor');
     await invite.getByRole('button', { name: 'Save role by email' }).click();
     await page.getByText(/browser-invite@gmail.com/).waitFor();
+    await boardSections.getByRole('link', { name: 'Activities' }).click();
+    await page.getByRole('heading', { name: 'Record attendance' }).waitFor();
+    await page.goBack();
+    await page.getByRole('heading', { name: 'Create a role' }).waitFor();
     await page.evaluate(() => { location.hash = 'assistant'; });
     await page.getByRole('textbox', { name: 'Your question' }).fill('rules of procedure');
     assert.equal(await page.getByRole('navigation', { name: 'Member navigation' }).isVisible(), true);
