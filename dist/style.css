@@ -162,7 +162,7 @@ form button { justify-self: start; }
   .section-head { margin-bottom: 10px; }
 }
 @media (max-width: 767px) {
-  :root { --mobile-dock-height: 58px; }
+  :root { --mobile-dock-height: 66px; }
   html { scroll-padding-bottom: calc(var(--mobile-dock-height) + env(safe-area-inset-bottom, 0px)); }
   .sidebar { display: none; }
   main { margin-left: 0; }
@@ -191,15 +191,15 @@ form button { justify-self: start; }
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 2px;
-    padding: 3px;
+    padding: 4px;
     border: 1px solid #2c3354;
-    border-radius: 18px;
+    border-radius: 20px;
     background: rgba(20, 26, 56, .94);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
   }
-  .mobile-tabs a { min-height: 44px; min-width: 0; justify-content: center; flex-direction: column; gap: 1px; padding: 2px; border: 0; border-radius: 15px; text-align: center; font-size: .62rem; font-weight: 600; line-height: 1.15; }
+  .mobile-tabs a { min-height: 50px; min-width: 0; justify-content: center; flex-direction: column; gap: 3px; padding: 3px 2px; border: 0; border-radius: 16px; text-align: center; font-size: .65rem; font-weight: 600; line-height: 1.15; }
   .mobile-tabs a:hover { background: transparent; border-color: transparent; }
   .mobile-tabs a[aria-current="page"] { color: var(--bright); background: rgba(235, 199, 120, .2); }
   .mobile-tabs a[aria-current="page"] .i { stroke-width: 2.1; }
@@ -280,7 +280,7 @@ form[data-action="quiz"] .choice:hover, form[data-action="vote"] .choice:hover {
 form[data-action="quiz"] .choice:has(input:checked), form[data-action="vote"] .choice:has(input:checked) { border-color: var(--gold); background: rgba(235, 199, 120, .1); }
 form[data-action="quiz"] .choice input, form[data-action="vote"] .choice input { width: 18px; height: 18px; }
 form[data-action="quiz"] button, form[data-action="vote"] button { min-height: 46px; }
-@media (max-width: 767px) { .mobile-tabs .i { width: 19px; height: 19px; } }
+@media (max-width: 767px) { .mobile-tabs .i { width: 21px; height: 21px; } }
 .login-page { min-height: calc(100vh - 60px); display: grid; place-items: center; padding: 8px 0; }
 .signed-out { background: radial-gradient(ellipse 80% 55% at 50% 0%, rgba(188, 147, 67, .16), transparent 70%), var(--base); }
 .login-card { width: min(440px, 100%); display: grid; justify-items: center; gap: 6px; text-align: center; padding: 34px 28px 26px; background: rgba(2, 6, 33, .86); border: 1px solid #4f422c; border-radius: 24px; box-shadow: 0 24px 60px rgba(0, 0, 0, .45); }
