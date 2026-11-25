@@ -18,6 +18,8 @@ const points = () => state.transactions.reduce((total, entry) => total + entry.a
 const level = () => Math.max(1, Math.floor(points() / 50) + 1);
 const postOrder = () => [...state.posts].sort((a, b) => Number(b.pinned) - Number(a.pinned));
 const safeUrl = value => /^https:\/\//i.test(value || '') ? esc(value) : '';
+// First and last name only, so long four-part names fit on one line.
+const shortName = name => { const parts = String(name || '').trim().split(/\s+/); return parts.length > 2 ? parts[0] + ' ' + parts.at(-1) : parts.join(' '); };
 const icon = id => `<svg class="i" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 const initials = name => esc(name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase());
 const avatar = (p, size = '') => safeUrl(p.photo)
@@ -28,7 +30,7 @@ function ranks(period) {
   return state.members.map(member => ({ name: member.name, score: member[period] || 0, you: member.id === state.profile.id }))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 }
-const ranking = (period, limit) => `<ol class="ranking">${ranks(period).slice(0, limit).map((member, index) => `<li><span>${String(index + 1).padStart(2, '0')}</span><span>${esc(member.name)}${member.you ? ' · You' : ''}</span><strong>${member.score} pts</strong></li>`).join('')}</ol>`;
+const ranking = (period, limit) => `<ol class="ranking">${ranks(period).slice(0, limit).map((member, index) => `<li><span>${String(index + 1).padStart(2, '0')}</span><span>${esc(shortName(member.name))}${member.you ? ' · You' : ''}</span><strong>${member.score} pts</strong></li>`).join('')}</ol>`;
 const rank = () => ranks('points').findIndex(member => member.you) + 1;
 const heading = (title, detail) => `<div class="page-heading"><h1>${title}</h1><p>${detail}</p></div>`;
 const news = post => `<article class="news"><div class="label">${post.pinned ? 'Pinned · ' : ''}${esc(post.type)}</div><h3>${esc(post.title)}</h3><p class="content-line">${esc(post.body)}</p></article>`;
@@ -107,7 +109,7 @@ function resources() {
 function profile() {
   const p = state.profile;
   return heading('My Profile', 'Manage your delegate details and review your club activity.') + stats() +
-    `<div class="grid"><section class="card stack">${photoEditor(p)}<div><h2>${esc(p.name)}</h2><p>${[p.role, p.committee, p.position].filter(Boolean).map(esc).join(' · ')}</p></div>
+    `<div class="grid"><section class="card stack">${photoEditor(p)}<div><h2>${esc(shortName(p.name))}</h2><p>${[p.role, p.committee, p.position].filter(Boolean).map(esc).join(' · ')}</p></div>
     <form data-action="profile"><label>Display name<input name="name" required maxlength="60" value="${esc(p.name)}"></label><input type="hidden" name="photo" value="${esc(p.photo)}"><button class="primary">Save name</button></form></section>
     <section class="card stack"><h2>Achievements</h2>${state.permissions.length ? '<a class="button" href="#admin">Board workspace</a>' : ''}<p>${points() >= 100 ? '✦ Rising Star · Reached 100 points' : 'Reach 100 points to unlock Rising Star.'}</p><h2>Attendance</h2>${activitiesList(state.attendance) || "<p>No attendance has been recorded.</p>"}<h2>Points history</h2>${pointHistory()}</section></div>`;
 }
@@ -126,7 +128,7 @@ function menu() {
   const p = state.profile;
   const row = (href, symbol, title, detail) => `<a class="menu-row" href="${href}"><span class="icon">${icon(symbol)}</span><span><strong>${title}</strong><small>${detail}</small></span>${icon('chevron')}</a>`;
   return heading('Menu', 'Your account and more club tools.') +
-    `<a class="card menu-profile" href="#profile">${avatar(p, 'lg')}<span><strong>${esc(p.name)}</strong><small>${[p.role, p.committee].filter(Boolean).map(esc).join(' · ')}</small></span>${icon('chevron')}</a>
+    `<a class="card menu-profile" href="#profile">${avatar(p, 'lg')}<span><strong>${esc(shortName(p.name))}</strong><small>${[p.role, p.committee].filter(Boolean).map(esc).join(' · ')}</small></span>${icon('chevron')}</a>
     <div class="card menu-list">${row('#profile', 'user', 'My Profile', 'Photo, name and achievements')}${row('#assistant', 'spark', 'MUN Assistant', 'Prepare for committee')}${row('#resources', 'book', 'Resources', 'Guides, templates and sources')}${row('#notifications', 'bell', 'Inbox', state.unreadNotifications ? state.unreadNotifications + ' unread' : 'Notifications and push')}${state.permissions.length ? row('#admin', 'shield', 'Board workspace', 'Manage the club') : ''}</div>
     <button class="signout" data-signout>${icon('logout')} Sign out</button>`;
 }
@@ -220,7 +222,7 @@ function render() {
   count.textContent = state.unreadNotifications > 99 ? '99+' : state.unreadNotifications;
   document.querySelector('#inbox-link').setAttribute('aria-label', 'Inbox' + (state.unreadNotifications ? ', ' + state.unreadNotifications + ' unread' : ''));
   document.querySelector('#crumb').innerHTML = '<span class="crumb-root">Club portal / </span>' + pages[route];
-  document.querySelector('#account-name').textContent = state.profile.name;
+  document.querySelector('#account-name').textContent = shortName(state.profile.name);
   document.querySelector('#initials').outerHTML = avatar(state.profile).replace('class="avatar', 'id="initials" class="avatar');
   document.querySelectorAll('.sidebar a, .mobile-tabs a').forEach(link => {
     const activeRoute = link.closest('.mobile-tabs') ? (dockTab[route] || 'menu') : route;
