@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 
-export async function createDatabase() {
+export async function createDatabase({ migrate = false } = {}) {
   const context = new AsyncLocalStorage();
   let query, transaction, close;
   let initialize;
@@ -48,8 +48,10 @@ export async function createDatabase() {
       await client.query(schema);
     });
   }
-  const schema = await readFile(new URL('./schema.sql', import.meta.url), 'utf8');
-  await initialize(schema);
+  if (migrate || process.env.NODE_ENV === 'test') {
+    const schema = await readFile(new URL('./schema.sql', import.meta.url), 'utf8');
+    await initialize(schema);
+  }
   function execute(sql, args) {
     let index = 0;
     const statement = sql.replace(/\?/g, () => '$' + ++index);
@@ -63,7 +65,7 @@ export async function createDatabase() {
     },
     all: async (sql, ...args) => (await execute(sql, args)).rows,
     get: async (sql, ...args) => (await execute(sql, args)).rows[0],
-    transact: callback => transaction(client => context.run(client, callback)),
+    transact: callback => context.getStore() ? callback() : transaction(client => context.run(client, callback)),
     close
   };
 }

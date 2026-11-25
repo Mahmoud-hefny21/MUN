@@ -3,3 +3,8 @@
 data/
 node_modules/
 *.tar.gz
+
+.vercel
+.env*
+!.env.example
+!.env.vercel.example

@@ -1,0 +1,12 @@
+.env
+.env.*
+.git
+.github
+.openai
+node_modules
+test
+docs
+*.pdf
+*.pptx
+*.JPEG
+*.tar.gz
