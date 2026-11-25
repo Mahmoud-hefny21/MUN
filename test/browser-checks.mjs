@@ -72,13 +72,15 @@ export async function verifyBrowser(base, session, memberSession) {
     await boardSections.getByRole('link', { name: 'Feed & polls' }).click();
     await page.getByRole('heading', { name: 'Manage posts' }).waitFor();
     await boardSections.getByRole('link', { name: 'Points' }).click();
-    const historyPicker = page.locator('#history-member');
-    await historyPicker.selectOption({ index: 1 });
+    await page.locator('#history-search').fill('deleg');
+    await page.locator('#history-results .pick').first().click();
     await page.locator('#points-history .history-head').waitFor();
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/points-history-320.png', fullPage: true });
     await boardSections.getByRole('link', { name: 'Members' }).click();
     await page.locator('.member-row').first().locator('summary').click();
     await page.locator('.member-row').first().locator('.access-chips').waitFor();
+    await page.locator('.member-row').first().getByRole('button', { name: 'Points history' }).click();
+    await page.locator('.member-row').first().locator('.row-history .history-head').waitFor();
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/member-edit-320.png', fullPage: true });
     await boardSections.getByRole('link', { name: 'Feed & polls' }).click();
     await boardSections.getByRole('link', { name: 'Roles & access' }).click();

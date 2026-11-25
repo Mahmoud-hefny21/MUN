@@ -306,6 +306,27 @@ document.addEventListener('click', async event => {
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && document.querySelector('#welcome')) closeWelcome(); });
 
 const can = permission => state.permissions.includes(permission);
+// Points history: members matching a name search, and one member's full history rendered into a box.
+const historyMatches = query => {
+  const q = query.trim().toLowerCase();
+  const list = [...state.members].filter(item => !q || item.name.toLowerCase().includes(q))
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name)).slice(0, q ? 12 : 6);
+  return list.map(item => `<button class="pick" data-history="${esc(item.id)}"><span>${esc(item.name)}</span><span class="count">${item.points} pts</span></button>`).join('')
+    || '<p class="hint">No member matches that name.</p>';
+};
+async function showHistory(button) {
+  const box = button.closest('.member-row')?.querySelector('.row-history') || content.querySelector('#points-history');
+  if (!box) return;
+  content.querySelectorAll('.pick.selected').forEach(item => item.classList.remove('selected'));
+  if (button.classList.contains('pick')) button.classList.add('selected');
+  box.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const { member, transactions } = await api('points-history', { member: button.dataset.history });
+    const total = transactions.reduce((sum, entry) => sum + entry.amount, 0);
+    box.innerHTML = `<div class="history-head"><strong>${esc(member.name)}</strong><span class="count">${total} pts total</span></div><small class="hint">${[member.committee, member.position].filter(Boolean).map(esc).join(' · ')}</small>` +
+      (transactions.length ? `<ul class="ranking">${transactions.map(entry => `<li><span class="${entry.amount > 0 ? 'plus' : 'minus'}">${entry.amount > 0 ? '+' : ''}${entry.amount}</span><span>${esc(entry.reason)}<br><small>${esc(entry.date)} · ${esc(entry.by)}</small></span></li>`).join('')}</ul>` : '<p>No points recorded for this member yet.</p>');
+  } catch (error) { box.innerHTML = `<p class="notice">${esc(error.message)}</p>`; }
+}
 function admin() {
   const intro = `<a class="back-link" href="#menu">${icon('chevron')} Back</a>` + heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
   if (!state.permissions.length) return intro + '<div class="card"><p>This workspace is available to authorized board members.</p></div>';
@@ -317,7 +338,7 @@ function admin() {
       <label>Poll choices (one per line)<textarea name="options" maxlength="400">${esc(editing?.options.join('\n'))}</textarea></label><button class="primary">${editing ? 'Save changes' : 'Publish'}</button></form>${editing ? '<button data-cancel-edit>Cancel editing</button>' : ''}</section>
       <section class="card stack"><h2>Manage posts</h2>${postOrder().filter(post => post.manageable).map(post => `<div class="list-row"><span class="list-main"><strong>${esc(post.title)}</strong><small>${esc(post.type)}${post.pinned ? ' · Pinned' : ''} · ${timeAgo(post.created)}</small></span><span class="row-actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button class="danger" data-delete="${esc(post.id)}">Delete</button></span></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
   const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${state.members.map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>
-    <section class="card stack"><h2>Member points history</h2><p class="hint">Choose any member to see every point they earned or lost, and who recorded it.</p><label>Member<select id="history-member"><option value="">Choose a member…</option>${[...state.members].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name)).map(item => `<option value="${esc(item.id)}">${esc(item.name)} · ${item.points} pts</option>`).join('')}</select></label><div id="points-history" aria-live="polite"></div></section>` : '';
+    <section class="card stack"><h2>Member points history</h2><p class="hint">Search any member to see every point they earned or lost, and who recorded it.</p><input id="history-search" type="search" placeholder="Search a member by name" aria-label="Search a member by name" autocomplete="off"><div id="history-results" class="pick-list">${historyMatches('')}</div><div id="points-history" class="history-box" aria-live="polite"></div></section>` : '';
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
     <section class="card stack"><h2>Schedule a quiz</h2>${state.quizBank.length ? `<form data-action="schedule-quiz"><label>Question<select name="question" required>${state.quizBank.map(item => `<option value="${item.id}">${esc(item.question)}</option>`).join('')}</select></label><label>Cairo date<input type="date" name="date" min="${esc(state.quiz.date)}" required></label><label>Reward<select name="reward"><option>0</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label>Source URL<input type="url" name="source" required maxlength="500"></label><button class="primary">Schedule quiz</button></form>` : '<p>Add a question to the quiz bank before scheduling.</p>'}</section>
     <section class="card stack"><h2>Add resource</h2><form data-action="resource"><label>Title<input name="title" required maxlength="100"></label><label>Category<input name="category" required maxlength="60"></label><label>Material<textarea name="body" required maxlength="3500"></textarea></label><label>Link<input type="url" name="url" maxlength="500"></label><button class="primary">Add resource</button></form></section>` : '';
@@ -337,6 +358,7 @@ function admin() {
     return `<details class="member-row" data-search="${esc((person.name + ' ' + person.email + ' ' + person.position).toLowerCase())}" data-committee="${esc(person.committee)}"><summary>${avatar(person)}<span class="list-main"><strong>${esc(shortName(person.name))}</strong><small>${esc(person.committee || 'No committee')}${person.position ? ' · ' + esc(person.position) : ''}</small></span><span class="dot ${tone}" title="${status}"></span><span class="badge${fullAccess(person.role) ? ' board' : ''}">${esc(fullAccess(person.role) ? 'Full access' : person.role)}</span>${icon('chevron')}</summary>
       <dl class="member-details">${detail('Full name', person.name)}${detail('Email', person.email)}${detail('Committee', person.committee)}${detail('Position', person.position)}${detail('Role', person.role)}${detail('Status', status)}</dl>
       ${locked ? '<p class="hint">Full-access account. Only the President can change it.</p>' : `<form class="member-form" data-action="directory-save"><input type="hidden" name="email" value="${esc(person.email)}"><div class="form-grid"><label>Full name<input name="name" required maxlength="60" value="${esc(person.name)}"></label><label>Role<select name="role">${roleOptions(person.role)}</select></label><label>Committee<select name="committee">${committeeOptions(person.committee)}</select></label><label>Position<input name="position" maxlength="60" value="${esc(person.position)}" placeholder="Optional"></label></div><div class="access"><span class="access-title">Access with this role</span><div class="access-chips">${accessChips(person.role)}</div></div><button class="primary">${person.active ? 'Save member' : 'Restore member'}</button></form>
+      ${person.id && can('points') ? `<button class="history-btn" data-history="${esc(person.id)}">${icon('chart')} Points history</button><div class="history-box row-history" aria-live="polite"></div>` : ''}
       ${person.active ? `<button class="danger remove-member" data-remove-member="${esc(person.email)}">Remove member</button>` : ''}`}</details>`;
   };
   const counts = directory.reduce((all, person) => { if (person.active) all[person.committee || ''] = (all[person.committee || ''] || 0) + 1; return all; }, {});
@@ -439,6 +461,10 @@ content.addEventListener('input', event => {
     const rows = [...content.querySelectorAll('.member-row')];
     rows.forEach(row => { row.hidden = !row.dataset.search.includes(query) || (committee !== '*' && row.dataset.committee !== committee); });
     document.querySelector('#no-members').hidden = rows.some(row => !row.hidden);
+    return;
+  }
+  if (event.target.id === 'history-search') {
+    content.querySelector('#history-results').innerHTML = historyMatches(event.target.value);
     return;
   }
   if (event.target.id !== 'resource-search') return;
@@ -544,18 +570,6 @@ content.addEventListener('change', async event => {
     if (chips) chips.innerHTML = (state.boardRoleAccess?.[event.target.value] || []).map(key => `<span class="chip">${labels[key] || esc(key)}</span>`).join('') || '<span class="chip off">No admin access</span>';
     return;
   }
-  if (event.target.id === 'history-member') {
-    const box = content.querySelector('#points-history');
-    if (!event.target.value) { box.innerHTML = ''; return; }
-    box.innerHTML = '<p class="hint">Loading…</p>';
-    try {
-      const { member, transactions } = await api('points-history', { member: event.target.value });
-      const total = transactions.reduce((sum, entry) => sum + entry.amount, 0);
-      box.innerHTML = `<div class="history-head"><strong>${esc(member.name)}</strong><span class="count">${total} pts total</span></div><small class="hint">${[member.committee, member.position].filter(Boolean).map(esc).join(' · ')}</small>` +
-        (transactions.length ? `<ul class="ranking">${transactions.map(entry => `<li><span class="${entry.amount > 0 ? 'plus' : 'minus'}">${entry.amount > 0 ? '+' : ''}${entry.amount}</span><span>${esc(entry.reason)}<br><small>${esc(entry.date)} · ${esc(entry.by)}</small></span></li>`).join('')}</ul>` : '<p>No points recorded for this member yet.</p>');
-    } catch (error) { box.innerHTML = `<p class="notice">${esc(error.message)}</p>`; }
-    return;
-  }
   if (event.target.id !== 'photo-file') return;
   const file = event.target.files[0];
   event.target.value = '';
@@ -575,6 +589,7 @@ content.addEventListener('click', event => {
   if (!state || !button || button.form || busy) return;
   if (button.dataset.signout !== undefined) return signOut(button);
   if (button.dataset.install !== undefined) return showWelcome(true);
+  if (button.dataset.history) return showHistory(button);
   if (button.dataset.removeMember) {
     if (confirm('Remove ' + button.dataset.removeMember + ' from the club? They lose access right away; their points and history are kept.')) perform(button, () => update('directory-remove', { email: button.dataset.removeMember }));
     return;

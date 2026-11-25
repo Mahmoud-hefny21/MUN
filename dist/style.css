@@ -409,3 +409,15 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 #points-history .ranking li { grid-template-columns: 48px 1fr; }
 #points-history .plus { color: #8fd19e; font-weight: 700; }
 #points-history .minus { color: #f0a8a0; font-weight: 700; }
+/* Points history search */
+.pick-list { display: grid; gap: 6px; }
+.pick { justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; font-weight: 500; text-align: start; background: var(--base); }
+.pick > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick.selected { border-color: var(--gold); background: rgba(235, 199, 120, .1); }
+.history-box:empty { display: none; }
+.history-box { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--base); }
+.history-box .ranking li { grid-template-columns: 48px 1fr; }
+.history-box .plus { color: #8fd19e; font-weight: 700; }
+.history-box .minus { color: #f0a8a0; font-weight: 700; }
+.history-btn { width: 100%; margin: 10px 0 8px; }
+.row-history { margin-bottom: 14px; }

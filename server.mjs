@@ -205,7 +205,7 @@ async function snapshot(member) {
       FROM mun_members m LEFT JOIN mun_transactions t ON m.id=t.member
       WHERE m.active=1 GROUP BY m.id`, weekStart.toISOString().slice(0,10), monthStart),
     // Everyone in the club: roster entries plus accounts, with the account's live values when it exists.
-    directory: can('members') ? all(`SELECT COALESCE(r.email, lower(m.email)) AS email,
+    directory: can('members') ? all(`SELECT m.id AS id, COALESCE(r.email, lower(m.email)) AS email,
         COALESCE(m.name, r.name) AS name, COALESCE(m.role, r.role) AS role,
         COALESCE(NULLIF(m.committee, ''), r.committee, '') AS committee, COALESCE(NULLIF(m.position, ''), r.position, '') AS position,
         m.id IS NOT NULL AS signed_in, COALESCE(m.active, 1) AS active, r.email IS NOT NULL AS listed
