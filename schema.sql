@@ -70,6 +70,7 @@
   CREATE TABLE IF NOT EXISTS mun_committees (name TEXT PRIMARY KEY);
   ALTER TABLE mun_posts ADD COLUMN IF NOT EXISTS committee TEXT REFERENCES mun_committees(name);
   ALTER TABLE mun_notification_events ADD COLUMN IF NOT EXISTS committee TEXT REFERENCES mun_committees(name);
+  ALTER TABLE mun_notification_events ADD COLUMN IF NOT EXISTS body TEXT NOT NULL DEFAULT '';
   CREATE TABLE IF NOT EXISTS mun_activities (
     id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL,
     starts_at TIMESTAMPTZ NOT NULL, committee TEXT REFERENCES mun_committees(name)

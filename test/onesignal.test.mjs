@@ -42,7 +42,7 @@ test('OneSignal test allowlist, identity, preferences and durable dispatch', asy
       await db.run('INSERT INTO mun_members (id,email,name) VALUES (?,?,?)', member, member + '@example.test', member);
       await push.setPreference(member, true);
     }
-    await db.run("INSERT INTO mun_notification_events(id,kind,title,route) VALUES ('post:1','Poll','Private club details','#feed')");
+    await db.run("INSERT INTO mun_notification_events(id,kind,title,route,body) VALUES ('post:1','Poll','Poll: Workshop topic','#feed','Choose a subject')");
     await db.run("INSERT INTO mun_notifications(event_id,member) SELECT 'post:1',id FROM mun_members");
     await push.enqueue('post:1');
     await push.enqueue('post:1');
@@ -56,7 +56,9 @@ test('OneSignal test allowlist, identity, preferences and durable dispatch', asy
     assert.equal(sent[0].idempotency_key, sent[1].idempotency_key);
     assert.deepEqual(sent[0].include_aliases.external_id, [id.externalId]);
     assert.equal(sent[0].url, origin + '/#feed');
-    assert.ok(!JSON.stringify(sent).includes('Private club details'));
+    // Push messages carry the notification's own title and details.
+    assert.deepEqual(sent[0].headings, { en: 'Poll: Workshop topic' });
+    assert.deepEqual(sent[0].contents, { en: 'Choose a subject' });
     await push.setPreference('tester', false);
     assert.deepEqual(await push.preference('tester'), { enabled: false });
   } finally {

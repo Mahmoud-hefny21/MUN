@@ -97,7 +97,8 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
       { email: 'member2@gmail.com', name: 'Roster Member', role: '', committee: 'Press and Media' },
       { email: 'not-an-email', name: 'Ignored' }
     ]), { roster: 2, updatedMembers: 0 });
-    const rostered = await (await get('/api/session', await login('rostered'))).json();
+    const rosteredSession = await login('rostered');
+    const rostered = await (await get('/api/session', rosteredSession)).json();
     assert.equal(rostered.signedIn, true);
     assert.equal(rostered.data.profile.name, 'Rostered Board Lead');
     assert.equal(rostered.data.profile.role, 'Co-President');
@@ -142,7 +143,8 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal(data.posts[0].title, poll.title);
     assert.equal(data.profile.role, 'Member');
     assert.equal(data.unreadNotifications, 1);
-    assert.equal(data.notifications[0].title, poll.title);
+    assert.equal(data.notifications[0].title, 'Poll: ' + poll.title);
+    assert.equal(data.notifications[0].body, poll.body);
     assert.equal((await post('notification-read', { id: 'not-owned' }, member)).status, 404);
     assert.equal((await (await post('notification-read', { id: data.notifications[0].id }, member)).json()).data.unreadNotifications, 0);
     assert.equal((await (await get('/api/session', owner)).json()).data.unreadNotifications, 1);
@@ -186,17 +188,35 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await (await get('/api/session', member)).json()).data.profile.role, 'Learning editor');
     assert.equal((await post('publish', poll, member)).status, 403);
     assert.equal((await post('member-email', { email: 'invited@gmail.com', role: 'Learning editor' }, owner)).status, 200);
-    assert.equal((await post('member-email', { email: 'copresident@gmail.com', role: 'Co-President' }, owner)).status, 400);
+    assert.equal((await post('member-email', { email: 'copresident@gmail.com', role: 'Co-President' }, owner)).status, 200);
+    assert.equal((await post('member-invite-revoke', { email: 'copresident@gmail.com' }, owner)).status, 200);
     assert.equal((await post('member-email', { email: 'president@gmail.com', role: 'President' }, owner)).status, 400);
     assert.equal((await post('directory-save', { email: 'Newbie@miuegypt.edu.eg', name: 'New Delegate', committee: '', role: 'Member', position: 'Delegate' }, owner)).status, 200);
     const directory = (await (await get('/api/session', owner)).json()).data.boardDirectory;
     assert.ok(directory.some(person => person.email === 'newbie@miuegypt.edu.eg' && person.position === 'Delegate' && !person.signed_in && person.active));
     assert.ok(directory.some(person => person.email === 'rostered@gmail.com' && person.signed_in));
-    assert.equal((await post('directory-save', { email: 'rostered@gmail.com', name: 'Demoted', role: 'Member' }, owner)).status, 403);
+    // The President manages Co-Presidents; a Co-President cannot touch the President or grant full access.
+    assert.equal((await post('directory-save', { email: 'rostered@gmail.com', name: 'Rostered Board Lead', role: 'Co-President', committee: 'Operations', position: 'Head of Operations' }, owner)).status, 200);
+    assert.equal((await post('directory-save', { email: 'owner@example.test', name: 'Owner', role: 'Member' }, rosteredSession)).status, 403);
+    assert.equal((await post('directory-save', { email: 'y@miuegypt.edu.eg', name: 'Y', role: 'Co-President' }, rosteredSession)).status, 400);
+    assert.equal((await post('directory-remove', { email: 'owner@example.test' }, rosteredSession)).status, 403);
+    const roleAccess = (await (await get('/api/session', owner)).json()).data.boardRoleAccess;
+    assert.deepEqual(roleAccess['Vice President'], ['posts', 'points', 'learning', 'activities']);
     assert.equal((await post('directory-save', { email: 'not-an-email', name: 'X' }, owner)).status, 400);
-    assert.equal((await post('directory-save', { email: 'x@miuegypt.edu.eg', name: 'X', role: 'Co-President' }, owner)).status, 400);
+    assert.equal((await post('directory-save', { email: 'x@miuegypt.edu.eg', name: 'X', role: 'Co-President' }, owner)).status, 200);
+    assert.equal((await post('directory-remove', { email: 'x@miuegypt.edu.eg' }, owner)).status, 200);
     assert.equal((await post('directory-save', { email: 'x@miuegypt.edu.eg', name: 'X' }, member)).status, 403);
-    assert.equal((await post('directory-remove', { email: 'rostered@gmail.com' }, owner)).status, 403);
+    // Points: only the recipient is notified, with details; board can read anyone's history.
+    const memberId = (await (await get('/api/session', member)).json()).data.profile.id;
+    assert.equal((await post('points', { member: memberId, amount: '5', reason: 'Best position paper', operation: crypto.randomUUID() }, owner)).status, 200);
+    const memberInbox = (await (await get('/api/session', member)).json()).data.notifications;
+    assert.equal(memberInbox[0].title, 'You earned +5 points');
+    assert.match(memberInbox[0].body, /^Best position paper · by /);
+    assert.equal((await (await get('/api/session', owner)).json()).data.notifications.some(item => item.kind === 'Points'), false);
+    const history = await (await post('points-history', { member: memberId }, owner)).json();
+    assert.ok(history.transactions.some(entry => entry.amount === 5 && entry.reason === 'Best position paper'));
+    assert.equal((await post('points-history', { member: memberId }, member)).status, 403);
+    assert.equal((await post('points-history', { member: 'nobody' }, owner)).status, 404);
     assert.equal((await post('directory-remove', { email: 'newbie@miuegypt.edu.eg' }, owner)).status, 200);
     assert.equal((await post('directory-remove', { email: 'newbie@miuegypt.edu.eg' }, owner)).status, 404);
     const invited = await login('invited');

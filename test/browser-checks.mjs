@@ -71,6 +71,16 @@ export async function verifyBrowser(base, session, memberSession) {
     assert.equal(await page.getByText('Browser Test Delegate').count(), 0);
     await boardSections.getByRole('link', { name: 'Feed & polls' }).click();
     await page.getByRole('heading', { name: 'Manage posts' }).waitFor();
+    await boardSections.getByRole('link', { name: 'Points' }).click();
+    const historyPicker = page.locator('#history-member');
+    await historyPicker.selectOption({ index: 1 });
+    await page.locator('#points-history .history-head').waitFor();
+    if (screenshotDir) await page.screenshot({ path: screenshotDir + '/points-history-320.png', fullPage: true });
+    await boardSections.getByRole('link', { name: 'Members' }).click();
+    await page.locator('.member-row').first().locator('summary').click();
+    await page.locator('.member-row').first().locator('.access-chips').waitFor();
+    if (screenshotDir) await page.screenshot({ path: screenshotDir + '/member-edit-320.png', fullPage: true });
+    await boardSections.getByRole('link', { name: 'Feed & polls' }).click();
     await boardSections.getByRole('link', { name: 'Roles & access' }).click();
     assert.equal(await page.getByRole('heading', { name: 'Publish activity' }).count(), 0);
     await page.getByLabel('Role name').fill('Browser editor');

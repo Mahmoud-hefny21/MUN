@@ -315,7 +315,8 @@ function admin() {
       <label>Title<input name="title" maxlength="100" required value="${esc(editing?.title)}"></label><label>Message<textarea name="body" maxlength="1500" required>${esc(editing?.body)}</textarea></label>
       <label>Poll choices (one per line)<textarea name="options" maxlength="400">${esc(editing?.options.join('\n'))}</textarea></label><button class="primary">${editing ? 'Save changes' : 'Publish'}</button></form>${editing ? '<button data-cancel-edit>Cancel editing</button>' : ''}</section>
       <section class="card stack"><h2>Manage posts</h2>${postOrder().filter(post => post.manageable).map(post => `<div class="list-row"><span class="list-main"><strong>${esc(post.title)}</strong><small>${esc(post.type)}${post.pinned ? ' · Pinned' : ''} · ${timeAgo(post.created)}</small></span><span class="row-actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button class="danger" data-delete="${esc(post.id)}">Delete</button></span></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
-  const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${state.members.map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>` : '';
+  const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${state.members.map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>
+    <section class="card stack"><h2>Member points history</h2><p class="hint">Choose any member to see every point they earned or lost, and who recorded it.</p><label>Member<select id="history-member"><option value="">Choose a member…</option>${[...state.members].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name)).map(item => `<option value="${esc(item.id)}">${esc(item.name)} · ${item.points} pts</option>`).join('')}</select></label><div id="points-history" aria-live="polite"></div></section>` : '';
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
     <section class="card stack"><h2>Schedule a quiz</h2>${state.quizBank.length ? `<form data-action="schedule-quiz"><label>Question<select name="question" required>${state.quizBank.map(item => `<option value="${item.id}">${esc(item.question)}</option>`).join('')}</select></label><label>Cairo date<input type="date" name="date" min="${esc(state.quiz.date)}" required></label><label>Reward<select name="reward"><option>0</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label>Source URL<input type="url" name="source" required maxlength="500"></label><button class="primary">Schedule quiz</button></form>` : '<p>Add a question to the quiz bank before scheduling.</p>'}</section>
     <section class="card stack"><h2>Add resource</h2><form data-action="resource"><label>Title<input name="title" required maxlength="100"></label><label>Category<input name="category" required maxlength="60"></label><label>Material<textarea name="body" required maxlength="3500"></textarea></label><label>Link<input type="url" name="url" maxlength="500"></label><button class="primary">Add resource</button></form></section>` : '';
@@ -324,14 +325,17 @@ function admin() {
   const committeeOptions = selected => '<option value="">Unassigned</option>' + state.committees.map(item => `<option ${item.name === selected ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
   const roleOptions = selected => state.boardRoles.map(role => `<option ${role === selected ? 'selected' : ''}>${esc(role)}</option>`).join('');
   const directory = state.boardDirectory || [];
+  const accessLabels = { members: 'Members & roles', posts: 'Feed & polls', points: 'Points', learning: 'Quiz & resources', activities: 'Activities' };
+  const accessChips = role => (state.boardRoleAccess?.[role] || []).map(key => `<span class="chip">${accessLabels[key] || esc(key)}</span>`).join('') || '<span class="chip off">No admin access</span>';
   const personStatus = person => !person.active ? ['Removed', 'off'] : person.signed_in ? ['Signed in', 'on'] : ['Not signed in yet', 'wait'];
   const memberRow = person => {
     const [status, tone] = personStatus(person);
-    const locked = fullAccess(person.role);
+    // The President can edit Co-Presidents; nobody edits the President from the app.
+    const locked = person.role === 'President' || (person.role === 'Co-President' && state.profile.role !== 'President');
     const detail = (label, value) => `<div><dt>${label}</dt><dd>${esc(value) || '—'}</dd></div>`;
-    return `<details class="member-row" data-search="${esc((person.name + ' ' + person.email + ' ' + person.position).toLowerCase())}" data-committee="${esc(person.committee)}"><summary>${avatar(person)}<span class="list-main"><strong>${esc(shortName(person.name))}</strong><small>${esc(person.committee || 'No committee')}${person.position ? ' · ' + esc(person.position) : ''}</small></span><span class="dot ${tone}" title="${status}"></span><span class="badge${locked ? ' board' : ''}">${esc(locked ? 'Full access' : person.role)}</span>${icon('chevron')}</summary>
+    return `<details class="member-row" data-search="${esc((person.name + ' ' + person.email + ' ' + person.position).toLowerCase())}" data-committee="${esc(person.committee)}"><summary>${avatar(person)}<span class="list-main"><strong>${esc(shortName(person.name))}</strong><small>${esc(person.committee || 'No committee')}${person.position ? ' · ' + esc(person.position) : ''}</small></span><span class="dot ${tone}" title="${status}"></span><span class="badge${fullAccess(person.role) ? ' board' : ''}">${esc(fullAccess(person.role) ? 'Full access' : person.role)}</span>${icon('chevron')}</summary>
       <dl class="member-details">${detail('Full name', person.name)}${detail('Email', person.email)}${detail('Committee', person.committee)}${detail('Position', person.position)}${detail('Role', person.role)}${detail('Status', status)}</dl>
-      ${locked ? '<p class="hint">Full-access account. Managed by the site owner.</p>' : `<form class="member-form" data-action="directory-save"><input type="hidden" name="email" value="${esc(person.email)}"><div class="form-grid"><label>Full name<input name="name" required maxlength="60" value="${esc(person.name)}"></label><label>Role<select name="role">${roleOptions(person.role)}</select></label><label>Committee<select name="committee">${committeeOptions(person.committee)}</select></label><label>Position<input name="position" maxlength="60" value="${esc(person.position)}" placeholder="Optional"></label></div><button class="primary">${person.active ? 'Save member' : 'Restore member'}</button></form>
+      ${locked ? '<p class="hint">Full-access account. Only the President can change it.</p>' : `<form class="member-form" data-action="directory-save"><input type="hidden" name="email" value="${esc(person.email)}"><div class="form-grid"><label>Full name<input name="name" required maxlength="60" value="${esc(person.name)}"></label><label>Role<select name="role">${roleOptions(person.role)}</select></label><label>Committee<select name="committee">${committeeOptions(person.committee)}</select></label><label>Position<input name="position" maxlength="60" value="${esc(person.position)}" placeholder="Optional"></label></div><div class="access"><span class="access-title">Access with this role</span><div class="access-chips">${accessChips(person.role)}</div></div><button class="primary">${person.active ? 'Save member' : 'Restore member'}</button></form>
       ${person.active ? `<button class="danger remove-member" data-remove-member="${esc(person.email)}">Remove member</button>` : ''}`}</details>`;
   };
   const counts = directory.reduce((all, person) => { if (person.active) all[person.committee || ''] = (all[person.committee || ''] || 0) + 1; return all; }, {});
@@ -339,7 +343,7 @@ function admin() {
   const memberPanel = can('members') ? `<section class="card stack directory"><div class="section-head"><h2>All members</h2><span class="count">${active.length} members · ${active.filter(person => person.signed_in).length} signed in</span></div>
     <div class="directory-tools"><input id="member-search" type="search" placeholder="Search name, email or position" aria-label="Search members"><select id="member-committee" aria-label="Filter by committee"><option value="*">All committees (${active.length})</option>${Object.keys(counts).sort().map(name => `<option value="${esc(name)}">${esc(name || 'No committee')} (${counts[name]})</option>`).join('')}</select></div>
     <div class="member-list">${directory.map(memberRow).join('') || '<p>No members yet. Add the first one.</p>'}</div><p id="no-members" hidden>No members match your search.</p></section>` : '';
-  const addMemberPanel = can('members') ? `<section class="card stack"><h2>Add member</h2><p class="hint">They can sign in with Google using this email and get access right away.</p><form data-action="directory-save"><label>University email<input type="email" name="email" required maxlength="254" placeholder="name1234567@miuegypt.edu.eg"></label><label>Full name<input name="name" required maxlength="60"></label><div class="form-grid"><label>Committee<select name="committee">${committeeOptions('')}</select></label><label>Role<select name="role">${roleOptions('Member')}</select></label></div><label>Position<input name="position" maxlength="60" placeholder="Optional, e.g. Secretariat"></label><button class="primary">Add member</button></form></section>` : '';
+  const addMemberPanel = can('members') ? `<section class="card stack"><h2>Add member</h2><p class="hint">They can sign in with Google using this email and get access right away.</p><form data-action="directory-save"><label>University email<input type="email" name="email" required maxlength="254" placeholder="name1234567@miuegypt.edu.eg"></label><label>Full name<input name="name" required maxlength="60"></label><div class="form-grid"><label>Committee<select name="committee">${committeeOptions('')}</select></label><label>Role<select name="role">${roleOptions('Member')}</select></label></div><div class="access"><span class="access-title">Access with this role</span><div class="access-chips">${accessChips('Member')}</div></div><label>Position<input name="position" maxlength="60" placeholder="Optional, e.g. Secretariat"></label><button class="primary">Add member</button></form></section>` : '';
   const rolePanel = can('members') ? `<section class="card stack"><h2>Assign a role by Google email</h2>
     <form data-action="member-email"><label>Google email<input type="email" name="email" maxlength="254" required></label>
     <label>Role<select name="role">${state.boardRoles.map(role => `<option>${esc(role)}</option>`).join('')}</select></label>
@@ -369,7 +373,7 @@ function admin() {
     <div class="admin-grid${['points','delivery'].includes(selected.id) ? ' admin-grid-single' : ''}">${selected.content}</div>`;
 }
 function notifications() {
-  const entries = state.notifications.map(item => `<article class="news"><div class="label">${esc(item.kind)}${item.read_at ? '' : ' · Unread'}</div><h3><a href="${esc(item.route)}">${esc(item.title)}</a></h3>${item.read_at ? '' : `<button data-read="${esc(item.id)}">Mark as read</button>`}</article>`).join('');
+  const entries = state.notifications.map(item => `<article class="news"><div class="label">${esc(item.kind)}${item.read_at ? '' : ' · Unread'}</div><h3><a href="${esc(item.route)}">${esc(item.title)}</a></h3>${item.body ? `<p class="note-body">${esc(item.body)}</p>` : ''}${item.read_at ? '' : `<button data-read="${esc(item.id)}">Mark as read</button>`}</article>`).join('');
   const preferences = state.pushPreference
     ? `<section class="card stack"><h2>Push notifications</h2><p>${state.pushPreference.enabled ? 'Push is enabled for your account.' : 'Get updates from the club on this device.'}</p>
       <div class="actions"><button data-push="${munPush.isReady() ? 'enable' : 'prepare'}">${munPush.isReady() ? 'Allow on this device' : 'Set up this device'}</button>
@@ -422,6 +426,7 @@ function render() {
   content.innerHTML = views[route]() + (notice && route !== 'admin' ? `<div class="notice" role="status">${esc(notice)}</div>` : '');
   notice = '';
   content.querySelectorAll('[data-pct]').forEach(bar => { bar.style.width = bar.dataset.pct + '%'; });
+  content.querySelector('.admin-nav [aria-current]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   const video = document.querySelector('#camera');
   if (video) video.srcObject = camera;
 }
@@ -532,6 +537,24 @@ async function photoAction(button) {
   if (step === 'remove' && confirm('Remove your profile photo?')) return perform(button, () => update('profile-photo', { remove: true }));
 }
 content.addEventListener('change', async event => {
+  if (event.target.matches('form[data-action="directory-save"] select[name="role"]')) {
+    const chips = event.target.form.querySelector('.access-chips');
+    const labels = { members: 'Members & roles', posts: 'Feed & polls', points: 'Points', learning: 'Quiz & resources', activities: 'Activities' };
+    if (chips) chips.innerHTML = (state.boardRoleAccess?.[event.target.value] || []).map(key => `<span class="chip">${labels[key] || esc(key)}</span>`).join('') || '<span class="chip off">No admin access</span>';
+    return;
+  }
+  if (event.target.id === 'history-member') {
+    const box = content.querySelector('#points-history');
+    if (!event.target.value) { box.innerHTML = ''; return; }
+    box.innerHTML = '<p class="hint">Loading…</p>';
+    try {
+      const { member, transactions } = await api('points-history', { member: event.target.value });
+      const total = transactions.reduce((sum, entry) => sum + entry.amount, 0);
+      box.innerHTML = `<div class="history-head"><strong>${esc(member.name)}</strong><span class="count">${total} pts total</span></div><small class="hint">${[member.committee, member.position].filter(Boolean).map(esc).join(' · ')}</small>` +
+        (transactions.length ? `<ul class="ranking">${transactions.map(entry => `<li><span class="${entry.amount > 0 ? 'plus' : 'minus'}">${entry.amount > 0 ? '+' : ''}${entry.amount}</span><span>${esc(entry.reason)}<br><small>${esc(entry.date)} · ${esc(entry.by)}</small></span></li>`).join('')}</ul>` : '<p>No points recorded for this member yet.</p>');
+    } catch (error) { box.innerHTML = `<p class="notice">${esc(error.message)}</p>`; }
+    return;
+  }
   if (event.target.id !== 'photo-file') return;
   const file = event.target.files[0];
   event.target.value = '';

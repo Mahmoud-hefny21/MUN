@@ -172,7 +172,10 @@ const rolePermissions = {
 const permissionsFor = member => member.role === 'Head' && !member.committee ? [] : (Object.hasOwn(rolePermissions, member.role) ? rolePermissions[member.role] : member.custom_permissions || []);
 // Full-access roles are granted only by an administrator (provision scripts), never from the board workspace.
 const protectedRoles = ['President', 'Co-President'];
-const assignableRole = async role => typeof role === 'string' && !protectedRoles.includes(role) &&
+const canManageAccount = (actor, account) => account.role !== 'President' && (account.role !== 'Co-President' || actor.role === 'President');
+// The President may also grant Co-President; nobody can grant President from the app.
+const assignableRole = async (role, actor) => typeof role === 'string' && role !== 'President' &&
+  (role !== 'Co-President' || actor?.role === 'President') &&
   (Object.hasOwn(rolePermissions, role) || Boolean(await get('SELECT 1 FROM mun_custom_roles WHERE name=?', role)));
 const canManagePost = (member, post) => member.role !== 'Head' || Boolean(member.committee && post.committee === member.committee);
 async function dailyQuestion(date = today()) {
@@ -207,8 +210,11 @@ async function snapshot(member) {
         m.id IS NOT NULL AS signed_in, COALESCE(m.active, 1) AS active, r.email IS NOT NULL AS listed
       FROM mun_roster r FULL OUTER JOIN mun_members m ON lower(m.email) = r.email
       ORDER BY lower(COALESCE(m.name, r.name))`) : [],
-    boardRoles: permissions.includes('members') ? [...Object.keys(rolePermissions).filter(role => !protectedRoles.includes(role)),
+    boardRoles: permissions.includes('members') ? [...Object.keys(rolePermissions).filter(role => role !== 'President' && (role !== 'Co-President' || member.role === 'President')),
       ...(await all('SELECT name FROM mun_custom_roles ORDER BY name')).map(role => role.name)] : [],
+    // What each role can do, shown next to the role picker.
+    boardRoleAccess: permissions.includes('members') ? Object.fromEntries([...Object.entries(rolePermissions),
+      ...(await all('SELECT name, permissions FROM mun_custom_roles')).map(role => [role.name, Array.isArray(role.permissions) ? role.permissions : parse(role.permissions || '[]')])]) : {},
     boardInvites: permissions.includes('members') ? await all('SELECT email,role FROM mun_member_invites WHERE created_at>now()-interval \'14 days\' ORDER BY created_at DESC LIMIT 50') : [],
     committees: permissions.includes('members') || (permissions.includes('posts') && member.role !== 'Head') ? await all('SELECT name FROM mun_committees ORDER BY name') : [],
     posts: postRows.map(post => {
@@ -224,7 +230,7 @@ async function snapshot(member) {
     attendance: await all(`SELECT a.title, a.kind, a.starts_at FROM mun_attendance p
       JOIN mun_activities a ON a.id=p.activity WHERE p.member=? ORDER BY a.starts_at DESC,a.id LIMIT 30`, member.id),
     boardActivities: permissions.includes('activities') ? await all('SELECT id,title,starts_at FROM mun_activities ORDER BY starts_at DESC,id LIMIT 30') : [],
-    notifications: await all(`SELECT e.id,e.kind,e.title,e.route,e.created_at,n.read_at
+    notifications: await all(`SELECT e.id,e.kind,e.title,e.body,e.route,e.created_at,n.read_at
       FROM mun_notifications n JOIN mun_notification_events e ON e.id=n.event_id
       WHERE n.member=? AND (e.committee IS NULL OR e.committee=?)
       ORDER BY e.created_at DESC,e.id DESC LIMIT 30`, member.id, member.committee),
@@ -261,8 +267,9 @@ async function bodyFrom(req, limit = 16384) {
 const postTypes = ['Announcement', 'Poll', 'Winners', 'General Update', 'Challenge'];
 const requirePermission = (member, permission) => check(permissionsFor(member).includes(permission), 'Board permission required.', 403);
 const audit = (actor, action, subject) => run('INSERT INTO mun_audit_events(actor,action,subject) VALUES (?,?,?)', actor, action, subject);
-async function notify(id, kind, title, route, recipient = null, committee = null) {
-  const created = await run('INSERT INTO mun_notification_events(id,kind,title,route,committee) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING', id, kind, title, route, committee);
+// body carries the details shown in the inbox and in the push message.
+async function notify(id, kind, title, route, recipient = null, committee = null, body = '') {
+  const created = await run('INSERT INTO mun_notification_events(id,kind,title,route,committee,body) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING', id, kind, title, route, committee, String(body).slice(0, 180));
   if (!created.changes) return;
   if (recipient) {
     await run('INSERT INTO mun_notifications(event_id,member) SELECT ?,id FROM mun_members WHERE id=? AND active=1', id, recipient);
@@ -311,7 +318,8 @@ async function mutate(path, member, body) {
     await transact(async () => {
       await run('INSERT INTO mun_activities VALUES (?,?,?,?,?)', id, title, kind, time, committee);
       await audit(member.id, 'activity.publish', id);
-      await notify('activity:' + id, 'Activity', title, '#home', null, committee);
+      await notify('activity:' + id, 'Activity', 'New ' + kind.toLowerCase() + ': ' + title, '#home', null, committee,
+        new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Cairo' }).format(new Date(time)) + ' (Cairo time)' + (committee ? ' · ' + committee : ''));
     });
     return 'Activity published.';
   }
@@ -401,7 +409,7 @@ async function mutate(path, member, body) {
         await transact(async () => {
           await run('INSERT INTO mun_posts(id,type,title,body,options,pinned,created,committee) VALUES (?,?,?,?,?,0,?,?)', postId, ...fields, Date.now(), committee);
           await audit(member.id, 'post.publish', postId);
-          await notify('post:' + postId, body.type, fields[1], '#feed', null, committee);
+          await notify('post:' + postId, body.type, body.type + ': ' + fields[1], '#feed', null, committee, fields[2]);
         });
       }
       return id ? 'Post updated.' : 'Post published.';
@@ -428,7 +436,8 @@ async function mutate(path, member, body) {
     await transact(async () => {
       check((await run('INSERT INTO mun_transactions(id,member,amount,reason,date,by) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING', id, target.id, amount, clean(body.reason, 120, 'reason'), today(), member.name + ' (' + member.role + ')')).changes, 'This adjustment was already recorded.', 409);
       await audit(member.id, 'points.adjust', id);
-      await notify('points:' + id, 'Points', amount > 0 ? 'Points added' : 'Points deducted', '#fantasy', target.id);
+      await notify('points:' + id, 'Points', (amount > 0 ? 'You earned +' + amount : 'You lost ' + Math.abs(amount)) + (Math.abs(amount) === 1 ? ' point' : ' points'), '#fantasy', target.id, null,
+        clean(body.reason, 120, 'reason') + ' · by ' + member.name);
     });
     return 'Points adjustment recorded.';
   }
@@ -448,7 +457,7 @@ async function mutate(path, member, body) {
   if (path === 'member-email') {
     requirePermission(member, 'members');
     const email = clean(body.email, 254, 'Google email').toLowerCase();
-    check(z.email().safeParse(email).success && await assignableRole(body.role), 'Choose a valid Google email and role.');
+    check(z.email().safeParse(email).success && await assignableRole(body.role, member), 'Choose a valid Google email and role.');
     const committee = clean(body.committee || '', 60, 'committee', true);
     if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
     if (body.role === 'Head') check(committee, 'Assign a committee before granting the Head role.');
@@ -477,8 +486,8 @@ async function mutate(path, member, body) {
   if (path === 'member') {
     requirePermission(member, 'members');
     const target = await get('SELECT * FROM mun_members WHERE id=?', clean(body.id, 255, 'member'));
-    check(target && !protectedRoles.includes(target.role) && target.id !== member.id, 'That account requires a separate administrative review.', 403);
-    check(await assignableRole(body.role) && ['0', '1'].includes(body.active), 'Invalid member settings.');
+    check(target && canManageAccount(member, target) && target.id !== member.id, 'That account requires a separate administrative review.', 403);
+    check(await assignableRole(body.role, member) && ['0', '1'].includes(body.active), 'Invalid member settings.');
     const committee = clean(body.committee ?? target.committee, 60, 'committee', true);
     const position = clean(body.position ?? target.position, 60, 'position', true);
     if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
@@ -497,7 +506,7 @@ async function mutate(path, member, body) {
     check(z.email().safeParse(email).success, 'Enter a valid email address.');
     const name = clean(body.name, 60, 'full name');
     const role = body.role || 'Member';
-    check(await assignableRole(role), 'Choose a valid role.');
+    check(await assignableRole(role, member), 'Choose a valid role.');
     const committee = clean(body.committee || '', 60, 'committee', true);
     const position = clean(body.position || '', 60, 'position', true);
     if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
@@ -505,7 +514,7 @@ async function mutate(path, member, body) {
     return transact(async () => {
       await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
       const account = await get('SELECT id, role FROM mun_members WHERE lower(email)=?', email);
-      check(!account || (!protectedRoles.includes(account.role) && account.id !== member.id), 'Full-access accounts are managed by the site owner.', 403);
+      check(!account || (canManageAccount(member, account) && account.id !== member.id), 'Full-access accounts are managed by the President.', 403);
       const existed = await get('SELECT 1 AS found FROM mun_roster WHERE email=?', email);
       await run(`INSERT INTO mun_roster(email,name,role,committee,position) VALUES (?,?,?,?,?)
         ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, committee=excluded.committee, position=excluded.position, updated_at=now()`,
@@ -522,7 +531,7 @@ async function mutate(path, member, body) {
     return transact(async () => {
       await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
       const account = await get('SELECT id, role FROM mun_members WHERE lower(email)=?', email);
-      check(!account || (!protectedRoles.includes(account.role) && account.id !== member.id), 'Full-access accounts are managed by the site owner.', 403);
+      check(!account || (canManageAccount(member, account) && account.id !== member.id), 'Full-access accounts are managed by the President.', 403);
       const removed = (await run('DELETE FROM mun_roster WHERE email=?', email)).changes;
       await run('DELETE FROM mun_member_invites WHERE email=?', email);
       if (account) {
@@ -566,7 +575,7 @@ async function mutate(path, member, body) {
     await transact(async () => {
       check((await run('INSERT INTO mun_daily_quizzes VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING', date, question, reward, sourceUrl, member.id)).changes, 'A quiz has already been scheduled for that date.', 409);
       await audit(member.id, 'quiz.schedule', date);
-      if (date === today()) await notify('quiz:' + date, 'Daily Quiz', 'Today’s quiz is available', '#quiz');
+      if (date === today()) await notify('quiz:' + date, 'Daily Quiz', 'Today’s Daily Quiz is ready', '#quiz', null, null, (await get('SELECT question FROM mun_quizzes WHERE id=?', question)).question + (reward ? ' · ' + reward + ' points' : ''));
     });
     return 'Daily quiz scheduled.';
   }
@@ -576,7 +585,7 @@ async function mutate(path, member, body) {
     await transact(async () => {
       check((await addResource(title, clean(body.category, 60, 'category'), clean(body.body, 3500, 'material'), httpsUrl(clean(body.url, 500, 'link', true)))).changes, 'That resource title already exists.', 409);
       await audit(member.id, 'resource.publish', title);
-      await notify('resource:' + digest(title), 'Resources', title, '#resources');
+      await notify('resource:' + digest(title), 'Resources', 'New resource: ' + title, '#resources', null, null, clean(body.category, 60, 'category'));
     });
     return 'Resource added.';
   }
@@ -732,8 +741,9 @@ app.use(async (req, res) => {
     if (req.method === 'GET' && path === '/api/cron/push') {
       check(push.authorizeCron(req.headers.authorization), 'Unavailable.', 404);
       const date = today();
-      if (await dailyQuestion(date)) {
-        await transact(() => notify('quiz:' + date, 'Daily Quiz', 'Today’s quiz is available', '#quiz'));
+      const quiz = await dailyQuestion(date);
+      if (quiz) {
+        await transact(() => notify('quiz:' + date, 'Daily Quiz', 'Today’s Daily Quiz is ready', '#quiz', null, null, quiz.question + (quiz.reward ? ' · ' + quiz.reward + ' points' : '')));
       }
       return respond(res, 200, { processed: await push.flush(12) });
     }
@@ -783,6 +793,13 @@ app.use(async (req, res) => {
       check(typeof data.enabled === 'boolean', 'Select a valid push preference.');
       await push.setPreference(currentMember.id, data.enabled);
       return respond(res, 200, { enabled: data.enabled });
+    }
+    // Any member's points history, for board members who manage points (President, Co-President, Vice President).
+    if (path === '/api/points-history') {
+      requirePermission(currentMember, 'points');
+      const target = await get('SELECT id, name, committee, position FROM mun_members WHERE id=?', clean(data.member, 255, 'member'));
+      check(target, 'Member not found.', 404);
+      return respond(res, 200, { member: target, transactions: await all('SELECT amount, reason, date, by FROM mun_transactions WHERE member=? ORDER BY sequence DESC', target.id) });
     }
     const message = await mutate(path.slice(5), currentMember, data);
     if (['publish','points','resource','activity','schedule-quiz'].includes(path.slice(5))) {

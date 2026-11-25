@@ -56,7 +56,7 @@ export function createPush({ env, origin, run, get, all }) {
     FROM claim WHERE o.event_id=claim.event_id AND o.member=claim.member
     RETURNING o.event_id,o.member,o.message_key,o.attempts`, limit);
     await Promise.all(rows.map(async job => {
-      const event = await get(`SELECT e.route FROM mun_notification_events e
+      const event = await get(`SELECT e.route, e.title, e.body FROM mun_notification_events e
         JOIN mun_members m ON m.id=? JOIN mun_push_preferences p ON p.member=m.id
         WHERE e.id=? AND m.active=1 AND (e.committee IS NULL OR e.committee=m.committee)`, job.member, job.event_id);
       let state = 'skipped';
@@ -68,7 +68,7 @@ export function createPush({ env, origin, run, get, all }) {
             headers: { Authorization: 'Key ' + apiKey, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               app_id: appId, target_channel: 'push', include_aliases: { external_id: [alias(job.member)] },
-              isAnyWeb: true, headings: { en: 'MIU MUN' }, contents: { en: 'There is a new update in your club portal.' },
+              isAnyWeb: true, headings: { en: event.title || 'MIU MUN' }, contents: { en: event.body || 'Open the MIU MUN portal for details.' },
               url: origin + '/' + event.route, idempotency_key: job.message_key
             })
           });
