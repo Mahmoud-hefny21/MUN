@@ -147,8 +147,10 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await (await post('notification-read', { id: data.notifications[0].id }, member)).json()).data.unreadNotifications, 0);
     assert.equal((await (await get('/api/session', owner)).json()).data.unreadNotifications, 1);
     assert.equal(Object.hasOwn(data.quiz, 'answer'), false);
+    assert.deepEqual(data.posts[0].votes, [0, 0]);
     const vote = { id: data.posts[0].id, choice: '0' };
     assert.equal((await post('vote', vote, member)).status, 200);
+    assert.deepEqual((await (await get('/api/session', owner)).json()).data.posts[0].votes, [1, 0]);
     assert.equal((await post('vote', vote, member)).status, 409);
     assert.equal(data.quiz.id, undefined);
     const schedule = { question: '1', date: data.quiz.date, reward: '3', source: 'https://www.un.org/en/about-us/main-bodies' };

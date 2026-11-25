@@ -341,7 +341,6 @@ body { overscroll-behavior-y: contain; }
 .poll-label { flex: 1; min-width: 0; }
 .poll-pct { font-weight: 700; color: var(--bright); }
 .poll-total { font-size: .8rem; margin-top: 2px; }
-.poll-board { margin-top: 14px; font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .card.empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 32px 20px; color: var(--muted); }
 .card.empty .i { width: 30px; height: 30px; }
 /* Board workspace */
@@ -392,3 +391,10 @@ button.danger:hover { border-color: #f0a8a0; }
 .hint { font-size: .84rem; }
 @media (max-width: 900px) { .admin-grid:has(.directory) { grid-template-columns: 1fr; } }
 @media (max-width: 480px) { .directory-tools, .member-details { grid-template-columns: 1fr; } }
+/* Poll choices show live percentages before voting */
+.poll-choice { position: relative; overflow: hidden; }
+.poll-choice .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: rgba(170, 180, 205, .12); transition: width .5s ease; pointer-events: none; }
+.poll-choice:has(input:checked) .fill { background: rgba(235, 199, 120, .2); }
+.poll-choice input, .poll-choice .poll-label, .poll-choice .poll-pct { position: relative; }
+.poll-choice .poll-label { flex: 1; min-width: 0; }
+form[data-action="vote"] .poll-total { margin: 2px 0 4px; }

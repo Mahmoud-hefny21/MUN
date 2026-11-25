@@ -62,8 +62,11 @@ function pollResults(post, voted) {
 function poll(post) {
   const voted = state.votes[post.id];
   if (voted !== undefined) return pollResults(post, voted);
-  return `<form data-action="vote" data-id="${esc(post.id)}">${post.options.map((choice, index) => `<label class="choice"><input type="radio" name="choice" value="${index}" required>${esc(choice)}</label>`).join('')}<button class="primary">Cast vote</button></form>
-    ${post.resultsVisible ? '<p class="poll-board">Live results (visible to the board)</p>' + pollResults(post) : ''}`;
+  const total = post.votes.reduce((sum, count) => sum + count, 0);
+  return `<form data-action="vote" data-id="${esc(post.id)}">${post.options.map((choice, index) => {
+    const pct = Math.round(100 * (post.votes[index] || 0) / (total || 1));
+    return `<label class="choice poll-choice"><span class="fill" data-pct="${pct}"></span><input type="radio" name="choice" value="${index}" required><span class="poll-label">${esc(choice)}</span><span class="poll-pct">${pct}%</span></label>`;
+  }).join('')}<p class="poll-total">${total} ${total === 1 ? 'vote' : 'votes'} so far</p><button class="primary">Cast vote</button></form>`;
 }
 const postIcons = { Announcement: 'bell', Poll: 'chart', Winners: 'trophy', 'General Update': 'feed', Challenge: 'star' };
 const timeAgo = value => {

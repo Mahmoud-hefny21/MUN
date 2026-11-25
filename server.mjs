@@ -214,8 +214,8 @@ async function snapshot(member) {
     posts: postRows.map(post => {
       const options = parse(post.options);
       const manageable = permissions.includes('posts') && canManagePost(member, post);
-      const resultsVisible = manageable || Object.hasOwn(votes, post.id);
-      return { ...post, options, manageable, resultsVisible, votes: resultsVisible ? options.map((_, choice) => counts.get(post.id + ':' + choice) || 0) : [] };
+      // Poll percentages are public, before and after voting.
+      return { ...post, options, manageable, votes: options.map((_, choice) => counts.get(post.id + ':' + choice) || 0) };
     }),
     votes, transactions: await all('SELECT * FROM mun_transactions WHERE member=? ORDER BY sequence', member.id),
     resources: await all('SELECT * FROM mun_resources ORDER BY id'),
