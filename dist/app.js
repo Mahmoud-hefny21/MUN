@@ -91,6 +91,7 @@ function formatReply(text) {
   const close = () => { if (list) { html += `</${list}>`; list = ''; } };
   for (const raw of String(text || '').split('\n')) {
     const line = raw.trim();
+    if (/^([-*_]){2,}$/.test(line)) { close(); continue; }
     const bullet = line.match(/^[-*•]\s+(.*)/), numbered = line.match(/^\d+[.)]\s+(.*)/), title = line.match(/^#{1,4}\s+(.*)/);
     if (bullet || numbered) {
       const kind = bullet ? 'ul' : 'ol';
