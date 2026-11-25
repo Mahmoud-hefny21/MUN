@@ -672,7 +672,7 @@ app.use(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.onesignal.com; connect-src 'self' https://*.onesignal.com; frame-src https://*.onesignal.com; worker-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.onesignal.com https://api.onesignal.com https://onesignal.com; style-src 'self' https://cdn.onesignal.com https://onesignal.com; connect-src 'self' https://onesignal.com https://*.onesignal.com; frame-src https://onesignal.com https://*.onesignal.com; worker-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   try {
     const url = new URL(req.url, origin);
     const path = url.pathname;
