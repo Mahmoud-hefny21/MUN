@@ -551,8 +551,11 @@ function pushStep() {
   return `<button class="primary" data-welcome="push">${icon('bell')} Turn on notifications</button>`;
 }
 function showWelcome(force = false) {
-  if (!state || (!force && localStorage.getItem(welcomeKey))) return;
-  if (!force && munInstall.standalone() && (!pushAvailable() || state.pushPreference.enabled)) return localStorage.setItem(welcomeKey, '1');
+  // Shown again every 7 days until notifications are on (unless the browser has blocked them).
+  const seen = Number(localStorage.getItem(welcomeKey) || 0);
+  const needsPush = pushAvailable() && !state?.pushPreference.enabled && 'Notification' in window && Notification.permission !== 'denied';
+  if (!state || (!force && seen && !(needsPush && Date.now() - seen > 7 * 86400000))) return;
+  if (!force && munInstall.standalone() && (!pushAvailable() || state.pushPreference.enabled)) return localStorage.setItem(welcomeKey, String(Date.now()));
   if (pushAvailable() && !state.pushPreference.enabled) munPush.prepare().catch(() => {});
   let sheet = document.querySelector('#welcome');
   if (!sheet) {
@@ -570,7 +573,7 @@ function showWelcome(force = false) {
   sheet.querySelector('[data-welcome]')?.focus();
 }
 function closeWelcome() {
-  localStorage.setItem(welcomeKey, '1');
+  localStorage.setItem(welcomeKey, String(Date.now()));
   document.querySelector('#welcome')?.remove();
 }
 document.addEventListener('click', async event => {
