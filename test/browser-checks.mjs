@@ -113,6 +113,10 @@ export async function verifyBrowser(base, session, memberSession) {
     await invite.getByRole('button', { name: 'Save role' }).click();
     await page.getByText(/browser-invite@gmail.com/).waitFor();
     assert.equal(await page.locator('[data-delete-role="Browser editor"]').count(), 1);
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-delete-role="Learning editor"]').click();
+    await page.getByRole('status').filter({ hasText: 'Learning editor deleted.' }).waitFor();
+    assert.equal(await page.locator('[data-delete-role="Learning editor"]').count(), 0);
     if (process.env.MUN_SHOT) { await page.setViewportSize({ width: 1280, height: 1100 }); await page.screenshot({ path: process.env.MUN_SHOT + '/roles.png', fullPage: true }); await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: process.env.MUN_SHOT + '/roles-m.png', fullPage: true }); }
     await boardSections.getByRole('link', { name: 'Activities' }).click();
     await page.getByRole('heading', { name: 'Record attendance' }).waitFor();

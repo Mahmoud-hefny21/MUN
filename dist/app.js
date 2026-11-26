@@ -1037,7 +1037,7 @@ content.addEventListener('change', async event => {
 });
 content.addEventListener('click', event => {
   const button = event.target.closest('button');
-  if (!state || !button || button.form || busy) return;
+  if (!state || !button || (button.form && !button.dataset.deleteRole) || busy) return;
   if (button.dataset.signout !== undefined) return signOut(button);
   if (button.dataset.install !== undefined) return showWelcome(true);
   if (button.dataset.history) return showHistory(button);
