@@ -657,6 +657,13 @@ async function mutate(path, member, body) {
     });
     return 'Resource added.';
   }
+  if (path === 'fantasy-new-season') {
+    requirePermission(member, 'points');
+    check(!scopeOf(member), 'Only club-wide points managers can start a new Fantasy season.', 403);
+    await fantasy.newSeason();
+    await audit(member.id, 'fantasy.new-season', 'fantasy');
+    return 'New Fantasy season started. Round 1 begins this week.';
+  }
   if (path === 'fantasy-settings') {
     requirePermission(member, 'points');
     check(!scopeOf(member), 'Only club-wide points managers can change Fantasy rules.', 403);

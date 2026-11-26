@@ -274,5 +274,17 @@ export function createFantasy({ run, get, all, transact, today }) {
     });
   }
 
-  return { settings, saveSettings, overview, saveSquad };
+  // New season: clears teams, transfers and prices; Round 1 restarts this week. Club points are untouched.
+  async function newSeason() {
+    const config = await settings();
+    await transact(async () => {
+      await run('DELETE FROM mun_fantasy_picks');
+      await run('DELETE FROM mun_fantasy_entries');
+      await run('DELETE FROM mun_fantasy_prices');
+      await run("INSERT INTO mun_settings(key, value) VALUES ('fantasy', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        JSON.stringify({ ...config, seasonStart: roundOf(today()) }));
+    });
+  }
+
+  return { settings, saveSettings, overview, saveSquad, newSeason };
 }

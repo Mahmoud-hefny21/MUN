@@ -124,18 +124,21 @@ async function syncFantasy() {
 }
 setInterval(syncFantasy, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncFantasy(); });
+// After a failed load, wait before retrying so a render never loops on errors.
+let fantasyFailedAt = 0;
 async function loadFantasy(force = false) {
-  if (fantasyLoading || (fantasyData && !force)) return;
+  if (fantasyLoading || (fantasyData && !force) || (!force && Date.now() - fantasyFailedAt < 30000)) return;
   fantasyLoading = true;
   try {
     fantasyData = await api('fantasy', {});
     fantasySyncedAt = Date.now();
     fxAnimate = true;
   } catch (error) {
+    fantasyFailedAt = Date.now();
     notice = error.message;
   } finally {
     fantasyLoading = false;
-    if (location.hash.slice(1).split('/')[0] === 'fantasy') render();
+    if (['fantasy', 'admin'].includes(location.hash.slice(1).split('/')[0])) render();
   }
 }
 const playerById = id => fantasyData.players.find(player => player.id === id);
@@ -227,6 +230,7 @@ function squadTab() {
   return `<section class="card fx-pitch-card">
       <div class="section-head"><h2>${draft ? 'Edit squad' : playing ? 'Playing this round' : 'Your squad for Round ' + (f.round.number + 1)}</h2>
         ${draft ? '' : f.settings.enabled ? '<button data-fx="edit">Transfers</button>' : ''}</div>
+      ${!f.settings.enabled ? `<div class="fx-statusbar paused">${icon('shield')}<span><b>Fantasy is paused by the board.</b> Transfers are closed; your team keeps scoring.</span></div>` : ''}
       ${draft
         ? `<div class="fx-statusbar">${icon('quiz')}<span>Picked <b>${ids.length} of ${size}</b> · Captain <b>${squad.captain ? esc(firstName(playerById(squad.captain)?.name || '')) : 'not chosen'}</b> · <b>${credits(f.settings.budget - cost)}</b> left</span></div>`
         : playing
@@ -642,30 +646,65 @@ function admin() {
       <label>Title<input name="title" maxlength="100" required value="${esc(editing?.title)}"></label><label>Message<textarea name="body" maxlength="1500" required>${esc(editing?.body)}</textarea></label>
       <label>Poll choices (one per line)<textarea name="options" maxlength="400">${esc(editing?.options.join('\n'))}</textarea></label><button class="primary">${editing ? 'Save changes' : 'Publish'}</button></form>${editing ? '<button data-cancel-edit>Cancel editing</button>' : ''}</section>
       <section class="card stack"><h2>Manage posts</h2>${postOrder().filter(post => post.manageable).map(post => `<div class="list-row"><span class="list-main"><strong>${esc(post.title)}</strong><small>${esc(post.type)}${post.pinned ? ' · Pinned' : ''} · ${timeAgo(post.created)}</small></span><span class="row-actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button class="danger" data-delete="${esc(post.id)}">Delete</button></span></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
+  // Fantasy tab: game control, season overview and rules (club-wide points managers).
   const fs = state.fantasySettings;
   const cr = value => (value / 10).toFixed(1);
-  const fantasyRules = fs ? `<section class="card stack"><h2>Fantasy rules</h2><p class="hint">Apply to every manager. Prices change automatically at the start of each round.</p>
-    <form data-action="fantasy-settings"><div class="form-grid">
-      <label>Fantasy<select name="enabled"><option value="true" ${fs.enabled ? 'selected' : ''}>Open</option><option value="false" ${fs.enabled ? '' : 'selected'}>Paused</option></select></label>
-      <label>Season start (Monday)<input type="date" name="seasonStart" value="${esc(fs.seasonStart)}"></label>
-      <label>Squad size<input type="number" name="squadSize" min="1" max="11" value="${fs.squadSize}"></label>
-      <label>Budget (m)<input type="number" name="budget" step="0.1" min="5" max="200" value="${cr(fs.budget)}"></label>
-      <label>Captain multiplier<input type="number" name="captainMultiplier" min="1" max="5" value="${fs.captainMultiplier}"></label>
-      <label>Free transfers per round<input type="number" name="freeTransfers" min="0" max="5" value="${fs.freeTransfers}"></label>
-      <label>Points per extra transfer<input type="number" name="transferPenalty" min="0" max="20" value="${fs.transferPenalty}"></label>
-      <label>Start price (m)<input type="number" name="startPrice" step="0.1" min="1" max="30" value="${cr(fs.startPrice)}"></label>
-      <label>Price change (m)<input type="number" name="priceStep" step="0.1" min="0" max="5" value="${cr(fs.priceStep)}"></label>
-      <label>Points per price rise<input type="number" name="riseThreshold" min="1" max="100" value="${fs.riseThreshold}"></label>
-      <label>Max rises per round (steps)<input type="number" name="maxRiseSteps" min="1" max="10" value="${fs.maxRiseSteps}"></label>
-      <label>Fall at (round pts ≤)<input type="number" name="fallThreshold" min="-50" max="50" value="${fs.fallThreshold}"></label>
-      <label>Lowest price (m)<input type="number" name="minPrice" step="0.1" min="1" max="30" value="${cr(fs.minPrice)}"></label>
-      <label>Highest price (m)<input type="number" name="maxPrice" step="0.1" min="1" max="30" value="${cr(fs.maxPrice)}"></label>
-      <label>Max per committee (0 = no limit)<input type="number" name="maxPerCommittee" min="0" max="11" value="${fs.maxPerCommittee}"></label>
-      <label>Board members: minimum<input type="number" name="boardMin" min="0" max="11" value="${fs.boardMin}"></label>
-      <label>Board members: maximum<input type="number" name="boardMax" min="0" max="11" value="${fs.boardMax}"></label>
-      <label>Heads: minimum<input type="number" name="headMin" min="0" max="11" value="${fs.headMin}"></label>
-      <label>Heads: maximum<input type="number" name="headMax" min="0" max="11" value="${fs.headMax}"></label>
-    </div><button class="primary">Save Fantasy rules</button></form></section>` : '';
+  const field = (label, name, value, hint, attributes = '') => `<label>${label}<input type="number" name="${name}" value="${value}" ${attributes}><small class="hint">${hint}</small></label>`;
+  let fantasyPanel = '';
+  if (fs) {
+    if (!fantasyData) loadFantasy();
+    const f = fantasyData;
+    const control = f ? `<section class="card stack fx-admin-control">
+        <div class="section-head"><h2>Game control</h2><span class="fx-state ${fs.enabled ? 'on' : 'off'}">${fs.enabled ? 'Open' : 'Paused'}</span></div>
+        <p>Round <b>${f.round.number}</b> · ${dayLabel(f.round.start)} – ${dayLabel(f.round.end)} · next round starts ${dayLabel(f.round.next)} (in ${daysUntil(f.round.next, f.round.today)} days).</p>
+        <p class="hint">${fs.enabled ? 'Members can pick teams and make transfers. Pausing closes transfers; scores keep counting.' : 'Transfers are closed for everyone. Scores keep counting. Open the game to let members change their teams.'}</p>
+        <div class="actions"><button class="${fs.enabled ? '' : 'primary'}" data-fx-admin="${fs.enabled ? 'pause' : 'open'}">${fs.enabled ? 'Pause the game' : 'Open the game'}</button>
+          <button class="danger" data-fx-admin="new-season">Start a new season</button></div>
+        <p class="hint">A new season clears every team, transfer and price, and restarts from Round 1 this week. Club points are not touched.</p>
+      </section>` : '<section class="card"><div class="fx-loading"><span></span><span></span><span></span></div></section>';
+    const glance = f ? (() => {
+      const mostPicked = [...f.players].sort((a, b) => b.selectedBy - a.selectedBy)[0];
+      const leader = f.roundLeague[0];
+      const average = f.league.length ? Math.round(f.league.reduce((sum, row) => sum + row.round, 0) / f.league.length) : 0;
+      const rose = f.players.filter(player => player.change > 0).length, fell = f.players.filter(player => player.change < 0).length;
+      const tile = (value, label) => `<div><b>${value}</b><small>${label}</small></div>`;
+      return `<section class="card stack"><h2>Season at a glance</h2><div class="fx-card-stats">
+        ${tile(f.managers, 'Managers')}${tile(f.players.length, 'Players')}${tile(average, 'Avg round pts')}
+        ${tile(leader ? esc(firstName(leader.name)) : '–', 'Round leader')}${tile(mostPicked?.selectedBy ? esc(firstName(mostPicked.name)) : '–', 'Most picked')}${tile('▲' + rose + ' ▼' + fell, 'Price moves')}</div>
+        ${f.players.length < fs.squadSize ? `<p class="notice">Only ${f.players.length} members have signed in, fewer than a ${fs.squadSize}-member team. Invite members, or lower the team size below.</p>` : ''}
+        <a class="text-link" href="#fantasy">Open Fantasy as a member →</a></section>`;
+    })() : '';
+    const rules = `<section class="card stack fx-admin-rules"><h2>Rules</h2><p class="hint">Changes apply to every manager right away; members' pages update by themselves.</p>
+      <form data-action="fantasy-settings">
+        <fieldset><legend>Team</legend><div class="form-grid">
+          ${field('Team size', 'squadSize', fs.squadSize, 'Members in each team (1–11).', 'min="1" max="11"')}
+          ${field('Budget (m)', 'budget', cr(fs.budget), 'Money to spend on the team.', 'step="0.1" min="5" max="200"')}
+          ${field('Captain multiplier', 'captainMultiplier', fs.captainMultiplier, 'The captain’s points are multiplied by this.', 'min="1" max="5"')}
+          <label>Season start<input type="date" name="seasonStart" value="${esc(fs.seasonStart)}"><small class="hint">Round 1 starts the Monday of this week.</small></label>
+        </div></fieldset>
+        <fieldset><legend>Transfers</legend><div class="form-grid">
+          ${field('Free transfers per round', 'freeTransfers', fs.freeTransfers, 'Changes allowed each round at no cost.', 'min="0" max="5"')}
+          ${field('Cost per extra transfer (pts)', 'transferPenalty', fs.transferPenalty, 'Deducted from the next round’s score.', 'min="0" max="20"')}
+        </div></fieldset>
+        <fieldset><legend>Prices (change automatically every round)</legend><div class="form-grid">
+          ${field('Start price (m)', 'startPrice', cr(fs.startPrice), 'Everyone starts here.', 'step="0.1" min="1" max="30"')}
+          ${field('Price step (m)', 'priceStep', cr(fs.priceStep), 'Size of one rise or fall.', 'step="0.1" min="0" max="5"')}
+          ${field('Points per rise', 'riseThreshold', fs.riseThreshold, 'One step up for every this many points.', 'min="1" max="100"')}
+          ${field('Max rises per round', 'maxRiseSteps', fs.maxRiseSteps, 'Largest rise in one round, in steps.', 'min="1" max="10"')}
+          ${field('Falls at or below (pts)', 'fallThreshold', fs.fallThreshold, 'A round this low drops the price one step.', 'min="-50" max="50"')}
+          ${field('Lowest price (m)', 'minPrice', cr(fs.minPrice), 'Prices never go below this.', 'step="0.1" min="1" max="30"')}
+          ${field('Highest price (m)', 'maxPrice', cr(fs.maxPrice), 'Prices never go above this.', 'step="0.1" min="1" max="30"')}
+        </div></fieldset>
+        <fieldset><legend>Team make-up</legend><div class="form-grid">
+          ${field('Max per committee', 'maxPerCommittee', fs.maxPerCommittee, '0 means no limit.', 'min="0" max="11"')}
+          ${field('Board members: minimum', 'boardMin', fs.boardMin, 'President, Co-President, Upper/High Board, Vice President.', 'min="0" max="11"')}
+          ${field('Board members: maximum', 'boardMax', fs.boardMax, '', 'min="0" max="11"')}
+          ${field('Heads: minimum', 'headMin', fs.headMin, 'Members with the Head role.', 'min="0" max="11"')}
+          ${field('Heads: maximum', 'headMax', fs.headMax, '', 'min="0" max="11"')}
+        </div></fieldset>
+        <button class="primary">Save Fantasy rules</button></form></section>`;
+    fantasyPanel = `<div class="stack">${control}${glance}</div>${rules}`;
+  }
   const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${scopedMembers().map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>
     <section class="card stack"><h2>Member points history</h2><p class="hint">Search any member to see every point they earned or lost, and who recorded it.</p><input id="history-search" type="search" placeholder="Search a member by name" aria-label="Search a member by name" autocomplete="off"><div id="history-results" class="pick-list">${historyMatches('')}</div><div id="points-history" class="history-box" aria-live="polite"></div></section>` : '';
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
@@ -727,7 +766,8 @@ function admin() {
     { id: 'roles', label: 'Roles & access', content: rolePanel },
     { id: 'feed', label: 'Feed & polls', content: postPanel },
     { id: 'activities', label: 'Activities', content: activityPanel },
-    { id: 'points', label: 'Points', content: pointsPanel + fantasyRules },
+    { id: 'points', label: 'Points', content: pointsPanel },
+    { id: 'fantasy', label: 'Fantasy', content: fantasyPanel },
     { id: 'learning', label: 'Quiz', content: learningPanel },
     { id: 'resources', label: 'Resources', content: resourcePanel },
     { id: 'delivery', label: 'Push delivery', content: delivery }
@@ -961,6 +1001,16 @@ content.addEventListener('click', event => {
   if (button.dataset.signout !== undefined) return signOut(button);
   if (button.dataset.install !== undefined) return showWelcome(true);
   if (button.dataset.history) return showHistory(button);
+  if (button.dataset.fxAdmin) {
+    const step = button.dataset.fxAdmin;
+    if (step === 'new-season' && !confirm('Start a new Fantasy season? Every team, transfer and price is cleared and Round 1 starts this week. Club points are kept.')) return;
+    return perform(button, async () => {
+      if (step === 'new-season') await update('fantasy-new-season', {});
+      else await update('fantasy-settings', { enabled: step === 'open' ? 'true' : 'false' });
+      fantasyData = await api('fantasy', {});
+      fantasySyncedAt = Date.now();
+    });
+  }
   if (button.dataset.fx) return fantasyAction(button);
   if (button.dataset.editResource) {
     editingResource = button.dataset.editResource;
@@ -1034,7 +1084,8 @@ content.addEventListener('submit', event => {
     if (pdf) fields.url = await uploadResourcePdf(pdf);
     await update(action, fields);
     if (action === 'publish') editingPost = '';
-    if (action === 'fantasy-settings') fantasyData = null;
+    // Reload Fantasy before the page redraws, so the confirmation stays on screen.
+    if (action === 'fantasy-settings') { fantasyData = await api('fantasy', {}); fantasySyncedAt = Date.now(); }
     if (action === 'resource-update') editingResource = '';
   });
 });

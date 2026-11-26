@@ -112,5 +112,16 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
   const saved = await fantasy.saveSettings({ captainMultiplier: '3', enabled: 'false' });
   assert.equal(saved.captainMultiplier, 3);
   await assert.rejects(fantasy.saveSquad(me, { players: ['b', 'c', 'd', 'g', 'h'], captain: 'c' }), /paused/);
+
+  // New season: teams, transfers and prices cleared; Round 1 restarts this week; club points kept.
+  await fantasy.newSeason();
+  await fantasy.saveSettings({ enabled: 'true' });
+  view = await fantasy.overview(me);
+  assert.equal(view.round.number, 1);
+  assert.equal(view.round.start, '2026-12-14');
+  assert.equal(view.managers, 0);
+  assert.equal(view.squad, null);
+  assert.ok(view.players.every(player => player.price === view.settings.startPrice && player.change === 0));
+  assert.ok((await db.get('SELECT COUNT(*)::int AS n FROM mun_transactions')).n > 0);
   await db.close();
 });

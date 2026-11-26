@@ -109,11 +109,18 @@ export async function verifyBrowser(base, session, memberSession) {
     await page.goBack();
     await page.getByRole('heading', { name: 'Create a role' }).waitFor();
     // Fantasy workflow: admin rule change, build a squad, captain, save, delegates, leagues, my points.
-    await page.evaluate(() => { location.hash = 'admin/points'; });
+    await page.evaluate(() => { location.hash = 'admin/fantasy'; });
     const rules = page.locator('form[data-action="fantasy-settings"]');
-    await rules.getByLabel('Squad size').fill('2');
+    await page.getByRole('heading', { name: 'Game control' }).waitFor();
+    await rules.getByLabel('Team size').fill('2');
     await rules.getByRole('button', { name: 'Save Fantasy rules' }).click();
     await page.getByRole('status').filter({ hasText: 'Fantasy rules saved.' }).waitFor();
+    // Game control: pause closes transfers for members, open restores them.
+    await page.getByRole('button', { name: 'Pause the game' }).click();
+    await page.locator('.fx-state.off').waitFor();
+    if (screenshotDir) await page.screenshot({ path: screenshotDir + '/admin-fantasy-paused-320.png', fullPage: true });
+    await page.getByRole('button', { name: 'Open the game' }).click();
+    await page.locator('.fx-state.on').waitFor();
     await page.evaluate(() => { location.hash = 'fantasy'; });
     const fantasyNav = page.getByRole('navigation', { name: 'Fantasy sections' });
     await fantasyNav.waitFor();
@@ -147,8 +154,8 @@ export async function verifyBrowser(base, session, memberSession) {
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/fantasy-leagues-320.png', fullPage: true });
     await fantasyNav.getByRole('button', { name: 'My points' }).click();
     await page.getByRole('heading', { name: 'Member standings' }).waitFor();
-    await page.evaluate(() => { location.hash = 'admin/points'; });
-    await page.locator('form[data-action="fantasy-settings"]').getByLabel('Squad size').fill('5');
+    await page.evaluate(() => { location.hash = 'admin/fantasy'; });
+    await page.locator('form[data-action="fantasy-settings"]').getByLabel('Team size').fill('5');
     await page.locator('form[data-action="fantasy-settings"]').getByRole('button', { name: 'Save Fantasy rules' }).click();
     await page.getByRole('status').filter({ hasText: 'Fantasy rules saved.' }).waitFor();
     await page.evaluate(() => { location.hash = 'assistant'; });
