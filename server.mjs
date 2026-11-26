@@ -175,7 +175,8 @@ const rolePermissions = {
   'Vice President': ['posts', 'points', 'learning', 'activities'],
   // A Head manages only their own committee: its members, points, activities and posts.
   Head: ['posts', 'members', 'points', 'activities'],
-  'Assigned Admin': ['learning'],
+  // Assigned Admin: same open access as the Admin, given only by the Admin.
+  'Assigned Admin': ['members', 'posts', 'points', 'learning', 'activities'],
   Member: []
 };
 // The Admin can change what each built-in role may do (stored in mun_settings 'role-access'); Admin itself always has everything.
@@ -191,14 +192,15 @@ async function loadRoleAccess() {
   const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
   const saved = row ? (typeof row.value === 'string' ? parse(row.value) : row.value) : {};
   for (const role of Object.keys(defaultRolePermissions)) {
-    rolePermissions[role] = role !== 'Admin' && Array.isArray(saved?.[role]) ? saved[role].filter(p => allPermissions.includes(p)) : [...defaultRolePermissions[role]];
+    rolePermissions[role] = !['Admin', 'Assigned Admin'].includes(role) && Array.isArray(saved?.[role]) ? saved[role].filter(p => allPermissions.includes(p)) : [...defaultRolePermissions[role]];
   }
 }
 const permissionsFor = member => (member.role === 'Head' || member.custom_scoped) && !member.committee ? [] : (Object.hasOwn(rolePermissions, member.role) ? rolePermissions[member.role] : member.custom_permissions || []);
 // Full-access roles are granted only by an administrator (provision scripts), never from the board workspace.
-const protectedRoles = ['Admin', 'President', 'Co-President'];
+const protectedRoles = ['Admin', 'Assigned Admin', 'President', 'Co-President'];
+const siteAdmins = ['Admin', 'Assigned Admin'];
 // Role hierarchy: you can only grant roles below your own, and only edit accounts below your own.
-const roleRank = { Admin: 6, President: 5, 'Co-President': 4, 'Upper Board': 3, 'High Board': 2, 'Vice President': 2, Head: 1 };
+const roleRank = { Admin: 6, 'Assigned Admin': 5.5, President: 5, 'Co-President': 4, 'Upper Board': 3, 'High Board': 2, 'Vice President': 2, Head: 1 };
 const rank = role => roleRank[role] ?? 0;
 // Custom roles that manage members sit at Head level; other custom roles are like Members.
 const customRank = permissions => permissions.includes('members') ? 1 : 0;
@@ -209,7 +211,7 @@ const canManageAccount = (actor, account) => actorRank(actor) > rank(account.rol
   (!scopeOf(actor) || account.committee === scopeOf(actor));
 const customRolePermissions = role => Array.isArray(role.permissions) ? role.permissions : parse(role.permissions || '[]');
 // Grantable: below your rank, gives no permission you lack, and Heads can only add plain Members.
-const grantable = (role, permissions, actor) => role !== 'Admin' && !deletedRoles.has(role) && (role !== 'President' || actor.role === 'Admin') && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
+const grantable = (role, permissions, actor) => role !== 'Admin' && !deletedRoles.has(role) && (role !== 'Assigned Admin' || actor.role === 'Admin') && (role !== 'President' || siteAdmins.includes(actor.role)) && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
   permissions.every(permission => permissionsFor(actor).includes(permission)) && (!scopeOf(actor) || role === 'Member');
 const assignableRole = async (role, actor) => {
   if (typeof role !== 'string' || !actor) return false;
@@ -528,7 +530,7 @@ async function mutate(path, member, body) {
   }
   if (path === 'role-access') {
     // The Admin and the President edit role access; only the Admin edits the President's own access.
-    check(['Admin', 'President'].includes(member.role), 'Only the Admin or the President can change role access.', 403);
+    check([...siteAdmins, 'President'].includes(member.role), 'Only the Admin or the President can change role access.', 403);
     const role = String(body.role || '');
     const list = body.permissions === undefined ? [] : [].concat(body.permissions);
     check(list.every(p => allPermissions.includes(p)), 'Choose valid permissions.');
@@ -538,7 +540,7 @@ async function mutate(path, member, body) {
       await audit(member.id, 'role.access', role);
       return role + ' access saved.';
     }
-    check(role !== 'Admin' && (role !== 'President' || member.role === 'Admin'), 'Choose a role.');
+    check(!siteAdmins.includes(role) && (role !== 'President' || siteAdmins.includes(member.role)), 'Choose a role.');
     const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
     const saved = row ? (typeof row.value === 'string' ? parse(row.value) : row.value) || {} : {};
     saved[role] = [...new Set(list)];
@@ -548,7 +550,7 @@ async function mutate(path, member, body) {
     return role + ' access saved.';
   }
   if (path === 'role-delete') {
-    check(['Admin', 'President'].includes(member.role), 'Only the Admin or the President can delete roles.', 403);
+    check([...siteAdmins, 'President'].includes(member.role), 'Only the Admin or the President can delete roles.', 403);
     const role = String(body.role || '');
     if (body.restore === 'true' || body.restore === true) {
       check(deletedRoles.has(role), 'Choose a role.');
@@ -559,7 +561,7 @@ async function mutate(path, member, body) {
     }
     if (Object.hasOwn(defaultRolePermissions, role)) {
       check(!permanentRoles.includes(role) && !deletedRoles.has(role), 'This role cannot be deleted.');
-      check(role !== 'Co-President' || member.role === 'Admin', 'Only the Admin can delete Co-President.', 403);
+      check(!['Co-President', 'Assigned Admin'].includes(role) || member.role === 'Admin', 'Only the Admin can delete this role.', 403);
       await transact(async () => {
         deletedRoles.add(role);
         await run("INSERT INTO mun_settings(key, value) VALUES ('deleted-roles', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify([...deletedRoles]));
@@ -1075,7 +1077,7 @@ export async function importRoster(rows) {
     committee: clean(row.committee).slice(0, 60), position: clean(row.position).slice(0, 60)
   })).filter(row => z.email().safeParse(row.email).success && row.name);
   for (const row of entries) {
-    check(Object.hasOwn(rolePermissions, row.role) && !['Admin', 'President'].includes(row.role), 'Unknown roster role: ' + row.role);
+    check(Object.hasOwn(rolePermissions, row.role) && !['Admin', 'Assigned Admin', 'President'].includes(row.role), 'Unknown roster role: ' + row.role);
   }
   return transact(async () => {
     for (const name of new Set(entries.map(row => row.committee).filter(Boolean))) {
@@ -1088,7 +1090,7 @@ export async function importRoster(rows) {
         ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, committee=excluded.committee, position=excluded.position, updated_at=now()`,
         row.email, row.name, row.role, row.committee, row.position);
       updated += (await run(`UPDATE mun_members SET name=?, role=?, committee=?, position=?, active=1
-        WHERE lower(email)=? AND role NOT IN ('Admin', 'President')`, row.name, row.role, row.committee, row.position, row.email)).changes;
+        WHERE lower(email)=? AND role NOT IN ('Admin', 'Assigned Admin', 'President')`, row.name, row.role, row.committee, row.position, row.email)).changes;
     }
     return { roster: entries.length, updatedMembers: updated };
   });

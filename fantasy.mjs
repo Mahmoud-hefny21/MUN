@@ -25,7 +25,7 @@ export const defaultSettings = {
   headMin: 0, headMax: 11
 };
 // Player categories: board roles, committee Heads, and everyone else.
-const boardRoles = ['Admin', 'President', 'Co-President', 'Upper Board', 'High Board', 'Vice President'];
+const boardRoles = ['Admin', 'Assigned Admin', 'President', 'Co-President', 'Upper Board', 'High Board', 'Vice President'];
 export const categoryOf = role => boardRoles.includes(role) ? 'board' : role === 'Head' ? 'head' : 'member';
 // Checks a team against the make-up rules; returns the first problem, or null.
 export function compositionProblem(players, config) {
