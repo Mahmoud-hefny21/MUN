@@ -229,6 +229,8 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('role-access', { role: 'Temp Role', permissions: ['posts', 'points'] }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Temp Role' }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Head' }, owner)).status, 400);
+    assert.equal((await post('publish', { type: 'Other', customType: 'Social Event', title: 'Iftar', body: 'Friday' }, owner)).status, 200);
+    assert.equal((await post('publish', { type: 'Other', customType: '', title: 'x', body: 'y' }, owner)).status, 400);
     assert.equal((await post('role-access', { role: 'Assigned Admin', permissions: ['learning', 'posts'] }, chiefSession)).status, 200);
     assert.deepEqual((await (await get('/api/session', chiefSession)).json()).data.boardRoleAccess['Assigned Admin'], ['learning', 'posts']);
     assert.equal((await post('role-access', { role: 'Assigned Admin', permissions: ['learning'] }, chiefSession)).status, 200);

@@ -639,12 +639,19 @@ document.addEventListener('click', event => {
   if (event.target.id === 'modal' || event.target.closest('[data-close-modal]')) closeModal();
 });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
+// Feed post type: 'Other' reveals a field for the board's own type.
+document.addEventListener('change', event => {
+  if (!event.target.matches('[data-post-type]')) return;
+  const field = event.target.form.querySelector('.custom-type');
+  field.hidden = event.target.value !== 'Other';
+  field.querySelector('input').required = !field.hidden;
+});
 function admin() {
   const intro = `<a class="back-link" href="#menu">${icon('chevron')} Back</a>` + heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
   if (!state.permissions.length) return intro + '<div class="card"><p>This workspace is available to authorized board members.</p></div>';
   const editing = state.posts.find(post => post.id === editingPost);
   const postPanel = can('posts') ? `<section class="card stack"><h2>${editing ? 'Edit post' : 'Publish to Feed'}</h2><form id="post-editor" data-action="publish" data-id="${esc(editing?.id)}">
-      <label>Type<select name="type">${types.map(type => `<option ${type === editing?.type ? 'selected' : ''}>${type}</option>`).join('')}</select></label>
+      ${(() => { const custom = editing && !types.includes(editing.type) ? editing.type : ''; return `<label>Type<select name="type" data-post-type>${types.map(type => `<option ${type === editing?.type ? 'selected' : ''}>${type}</option>`).join('')}<option value="Other" ${custom ? 'selected' : ''}>Other</option></select></label><label class="custom-type" ${custom ? '' : 'hidden'}>Your own type<input name="customType" maxlength="30" placeholder="e.g. Reminder, Social Event" value="${esc(custom)}"></label>`; })()}
       ${state.scope ? '<p>Audience: ' + esc(state.scope) + '</p>' : `<label>Audience<select name="committee"><option value="">Entire club</option>${state.committees.map(item => `<option ${item.name === editing?.committee ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label>`}
       <label>Title<input name="title" maxlength="100" required value="${esc(editing?.title)}"></label><label>Message<textarea name="body" maxlength="1500" required>${esc(editing?.body)}</textarea></label>
       <label>Poll choices (one per line)<textarea name="options" maxlength="400">${esc(editing?.options.join('\n'))}</textarea></label><button class="primary">${editing ? 'Save changes' : 'Publish'}</button></form>${editing ? '<button data-cancel-edit>Cancel editing</button>' : ''}</section>

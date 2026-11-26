@@ -463,7 +463,9 @@ async function mutate(path, member, body) {
   if (['publish', 'pin', 'delete'].includes(path)) {
     requirePermission(member, 'posts');
     if (path === 'publish') {
-      check(postTypes.includes(body.type), 'Choose a valid post type.');
+      // 'Other' lets the board write its own type, e.g. Reminder.
+      if (body.type === 'Other') body.type = clean(body.customType, 30, 'post type');
+      check(postTypes.includes(body.type) || (typeof body.type === 'string' && /^[\p{L}\p{N}][\p{L}\p{N} &'-]{0,29}$/u.test(body.type) && body.type !== 'Poll'), 'Choose a valid post type.');
       const choices = body.type === 'Poll' ? lines(body.options, 400) : [];
       check(body.type !== 'Poll' || (choices.length >= 2 && choices.length <= 8), 'Polls need two to eight choices.');
       const id = clean(body.id || '', 60, 'post', true);
