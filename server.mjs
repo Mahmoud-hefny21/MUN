@@ -156,7 +156,7 @@ async function googleLogin(req, res, url) {
 async function memberFor(req) {
   const session = cookie(req, 'mun_session');
   if (!session) return null;
-  const member = await get(`SELECT m.*, r.permissions AS custom_permissions FROM mun_members m
+  const member = await get(`SELECT m.*, r.permissions AS custom_permissions, r.committee_scoped AS custom_scoped FROM mun_members m
     JOIN mun_sessions s ON m.id=s.member LEFT JOIN mun_custom_roles r ON r.name=m.role
     WHERE s.id=? AND s.expires>?`, digest(session), Date.now());
   return member?.active ? member : null;
@@ -172,19 +172,22 @@ const rolePermissions = {
   'Assigned Admin': ['learning'],
   Member: []
 };
-const permissionsFor = member => member.role === 'Head' && !member.committee ? [] : (Object.hasOwn(rolePermissions, member.role) ? rolePermissions[member.role] : member.custom_permissions || []);
+const permissionsFor = member => (member.role === 'Head' || member.custom_scoped) && !member.committee ? [] : (Object.hasOwn(rolePermissions, member.role) ? rolePermissions[member.role] : member.custom_permissions || []);
 // Full-access roles are granted only by an administrator (provision scripts), never from the board workspace.
 const protectedRoles = ['President', 'Co-President'];
 // Role hierarchy: you can only grant roles below your own, and only edit accounts below your own.
 const roleRank = { President: 5, 'Co-President': 4, 'Upper Board': 3, 'High Board': 2, 'Vice President': 2, Head: 1 };
 const rank = role => roleRank[role] ?? 0;
-// A Head's reach is their committee; everyone else is club-wide.
-const scopeOf = member => member.role === 'Head' ? member.committee || '\u0000' : null;
-const canManageAccount = (actor, account) => rank(actor.role) > rank(account.role) &&
+// Custom roles that manage members sit at Head level; other custom roles are like Members.
+const customRank = permissions => permissions.includes('members') ? 1 : 0;
+const actorRank = member => roleRank[member.role] ?? customRank(permissionsFor(member));
+// Heads, and custom roles limited to a committee, act only inside their own committee.
+const scopeOf = member => member.role === 'Head' || member.custom_scoped ? member.committee || '\u0000' : null;
+const canManageAccount = (actor, account) => actorRank(actor) > rank(account.role) &&
   (!scopeOf(actor) || account.committee === scopeOf(actor));
 const customRolePermissions = role => Array.isArray(role.permissions) ? role.permissions : parse(role.permissions || '[]');
 // Grantable: below your rank, gives no permission you lack, and Heads can only add plain Members.
-const grantable = (role, permissions, actor) => role !== 'President' && rank(role) < rank(actor.role) &&
+const grantable = (role, permissions, actor) => role !== 'President' && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
   permissions.every(permission => permissionsFor(actor).includes(permission)) && (!scopeOf(actor) || role === 'Member');
 const assignableRole = async (role, actor) => {
   if (typeof role !== 'string' || !actor) return false;
@@ -192,7 +195,8 @@ const assignableRole = async (role, actor) => {
   const custom = await get('SELECT permissions FROM mun_custom_roles WHERE name=?', role);
   return Boolean(custom) && grantable(role, customRolePermissions(custom), actor);
 };
-const canManagePost = (member, post) => member.role !== 'Head' || Boolean(member.committee && post.committee === member.committee);
+const committeeScopedRole = async role => Boolean((await get('SELECT committee_scoped FROM mun_custom_roles WHERE name=?', role))?.committee_scoped);
+const canManagePost = (member, post) => !scopeOf(member) || post.committee === scopeOf(member);
 async function dailyQuestion(date = today()) {
   const question = await get(`SELECT q.*, d.reward, d.source_url FROM mun_daily_quizzes d
     JOIN mun_quizzes q ON q.id=d.question WHERE d.day=?`, date);
@@ -210,7 +214,7 @@ async function snapshot(member) {
   // All reads are independent, so they run in parallel (one wave of round trips instead of ~20 sequential ones).
   const pending = {
     postRows: all('SELECT * FROM mun_posts WHERE committee IS NULL OR committee=? OR ?=1 ORDER BY pinned DESC, created DESC',
-      member.committee, Number(can('posts') && member.role !== 'Head')),
+      member.committee, Number(can('posts') && !scopeOf(member))),
     myVotes: all('SELECT post, choice FROM mun_votes WHERE member=?', member.id),
     voteCounts: all('SELECT post, choice, COUNT(*)::integer AS total FROM mun_votes GROUP BY post, choice'),
     question: dailyQuestion(date),
@@ -445,7 +449,7 @@ async function mutate(path, member, body) {
       const choices = body.type === 'Poll' ? lines(body.options, 400) : [];
       check(body.type !== 'Poll' || (choices.length >= 2 && choices.length <= 8), 'Polls need two to eight choices.');
       const id = clean(body.id || '', 60, 'post', true);
-      const committee = member.role === 'Head' ? member.committee : clean(body.committee || '', 60, 'committee', true) || null;
+      const committee = scopeOf(member) || clean(body.committee || '', 60, 'committee', true) || null;
       if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
       const fields = [body.type, clean(body.title, 100, 'title'), clean(body.body, 1500, 'message'), json(choices)];
       if (id) {
@@ -499,10 +503,11 @@ async function mutate(path, member, body) {
     const name = clean(body.name, 40, 'role name');
     check(/^[a-zA-Z][a-zA-Z0-9 -]{1,39}$/.test(name) && !Object.keys(rolePermissions).some(role => role.toLowerCase() === name.toLowerCase()), 'Choose a different role name.');
     const permissions = body.permissions;
-    check(Array.isArray(permissions) && permissions.length > 0 && permissions.length <= 4 &&
-      permissions.every(permission => ['posts','points','learning','activities'].includes(permission)), 'Choose valid operational permissions.');
+    check(Array.isArray(permissions) && permissions.length > 0 && permissions.length <= 5 &&
+      permissions.every(permission => ['members','posts','points','learning','activities'].includes(permission) && permissionsFor(member).includes(permission)), 'Choose valid permissions.');
+    const scoped = body.committeeOnly === true || body.committeeOnly === 'on';
     await transact(async () => {
-      check((await run('INSERT INTO mun_custom_roles VALUES (?,?) ON CONFLICT DO NOTHING', name, [...new Set(permissions)])).changes, 'This role already exists.', 409);
+      check((await run('INSERT INTO mun_custom_roles(name, permissions, committee_scoped) VALUES (?,?,?) ON CONFLICT DO NOTHING', name, [...new Set(permissions)], scoped)).changes, 'This role already exists.', 409);
       await audit(member.id, 'role.create', name);
     });
     return 'Role created.';
@@ -513,7 +518,7 @@ async function mutate(path, member, body) {
     check(z.email().safeParse(email).success && await assignableRole(body.role, member), 'Choose a valid Google email and role.');
     const committee = scopeOf(member) || clean(body.committee || '', 60, 'committee', true);
     if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
-    if (body.role === 'Head') check(committee, 'Assign a committee before granting the Head role.');
+    if (body.role === 'Head' || await committeeScopedRole(body.role)) check(committee, 'Assign a committee before granting this role.');
     return transact(async () => {
       await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
       const matches = await all('SELECT id FROM mun_members WHERE lower(email)=? LIMIT 2', email);
@@ -545,7 +550,7 @@ async function mutate(path, member, body) {
     const committee = scopeOf(member) || clean(body.committee ?? target.committee, 60, 'committee', true);
     const position = clean(body.position ?? target.position, 60, 'position', true);
     if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
-    if (body.role === 'Head') check(committee, 'Assign a committee before granting the Head role.');
+    if (body.role === 'Head' || await committeeScopedRole(body.role)) check(committee, 'Assign a committee before granting this role.');
     await transact(async () => {
       await run('UPDATE mun_members SET role=?, active=?, committee=?, position=? WHERE id=?', body.role, Number(body.active), committee, position, target.id);
       if (body.active === '0') await run('DELETE FROM mun_sessions WHERE member=?', target.id);
@@ -564,13 +569,13 @@ async function mutate(path, member, body) {
     const committee = scopeOf(member) || clean(body.committee || '', 60, 'committee', true);
     const position = clean(body.position || '', 60, 'position', true);
     if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
-    if (role === 'Head') check(committee, 'Assign a committee before granting the Head role.');
+    if (role === 'Head' || await committeeScopedRole(role)) check(committee, 'Assign a committee before granting this role.');
     return transact(async () => {
       await get('SELECT pg_advisory_xact_lock(hashtext(?))', email);
       const account = await get('SELECT id, role, committee FROM mun_members WHERE lower(email)=?', email);
       check(!account || (canManageAccount(member, account) && account.id !== member.id), 'You cannot change this account.', 403);
       const existed = await get('SELECT committee, role FROM mun_roster WHERE email=?', email);
-      check(!existed || account || (rank(existed.role) < rank(member.role) && (!scopeOf(member) || existed.committee === scopeOf(member))), 'You cannot change this member.', 403);
+      check(!existed || account || (rank(existed.role) < actorRank(member) && (!scopeOf(member) || existed.committee === scopeOf(member))), 'You cannot change this member.', 403);
       await run(`INSERT INTO mun_roster(email,name,role,committee,position) VALUES (?,?,?,?,?)
         ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, committee=excluded.committee, position=excluded.position, updated_at=now()`,
         email, name, role, committee, position);
@@ -588,7 +593,7 @@ async function mutate(path, member, body) {
       const account = await get('SELECT id, role, committee FROM mun_members WHERE lower(email)=?', email);
       check(!account || (canManageAccount(member, account) && account.id !== member.id), 'You cannot remove this account.', 403);
       const listed = await get('SELECT committee, role FROM mun_roster WHERE email=?', email);
-      check(!listed || account || (rank(listed.role) < rank(member.role) && (!scopeOf(member) || listed.committee === scopeOf(member))), 'You cannot remove this member.', 403);
+      check(!listed || account || (rank(listed.role) < actorRank(member) && (!scopeOf(member) || listed.committee === scopeOf(member))), 'You cannot remove this member.', 403);
       const removed = (await run('DELETE FROM mun_roster WHERE email=?', email)).changes;
       await run('DELETE FROM mun_member_invites WHERE email=?', email);
       if (account) {

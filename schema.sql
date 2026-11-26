@@ -89,6 +89,10 @@
     CHECK (permissions <@ ARRAY['posts','points','learning','activities']::text[])
   );
   CREATE UNIQUE INDEX IF NOT EXISTS mun_custom_roles_lower ON mun_custom_roles(lower(name));
+  -- Custom roles may also manage members, and may be limited to the holder's own committee.
+  ALTER TABLE mun_custom_roles DROP CONSTRAINT IF EXISTS mun_custom_roles_permissions_check;
+  ALTER TABLE mun_custom_roles ADD CONSTRAINT mun_custom_roles_permissions_check CHECK (permissions <@ ARRAY['members','posts','points','learning','activities']::text[]);
+  ALTER TABLE mun_custom_roles ADD COLUMN IF NOT EXISTS committee_scoped BOOLEAN NOT NULL DEFAULT false;
   -- Official club roster (imported from the membership sheet). Listed emails are activated on first Google sign-in.
   CREATE TABLE IF NOT EXISTS mun_roster (
     email TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'Member', committee TEXT NOT NULL DEFAULT '',

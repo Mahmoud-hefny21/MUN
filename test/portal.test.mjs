@@ -194,7 +194,21 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     const activity = { title: 'Delegate practice', starts: new Date(Date.now() - 60000).toISOString(), kind: 'Training', committee: 'Security Council' };
     assert.equal((await post('activity', activity, member)).status, 403);
     assert.equal((await post('custom-role', { name: 'Learning editor', permissions: ['learning'] }, member)).status, 403);
-    assert.equal((await post('custom-role', { name: 'Learning editor', permissions: ['members'] }, owner)).status, 400);
+    assert.equal((await post('custom-role', { name: 'Bad role', permissions: ['admin'] }, owner)).status, 400);
+    // A custom role can manage members, limited to the holder's committee.
+    assert.equal((await post('custom-role', { name: 'Committee lead', permissions: ['members', 'points'], committeeOnly: true }, owner)).status, 200);
+    assert.equal((await post('directory-save', { email: 'member2@gmail.com', name: 'Lead', role: 'Committee lead' }, owner)).status, 400);
+    assert.equal((await post('directory-save', { email: 'member2@gmail.com', name: 'Lead', role: 'Committee lead', committee: 'Press and Media' }, owner)).status, 200);
+    const leadSession = await login('member2');
+    const leadView = (await (await get('/api/session', leadSession)).json()).data;
+    assert.deepEqual(leadView.permissions, ['members', 'points']);
+    assert.deepEqual(leadView.boardRoles, ['Member']);
+    assert.equal(leadView.scope, 'Press and Media');
+    assert.ok(leadView.boardDirectory.every(person => person.committee === 'Press and Media'));
+    assert.equal((await post('directory-save', { email: 'lead1@miuegypt.edu.eg', name: 'Lead One', committee: 'Operations' }, leadSession)).status, 200);
+    assert.ok((await (await get('/api/session', leadSession)).json()).data.boardDirectory.some(person => person.email === 'lead1@miuegypt.edu.eg' && person.committee === 'Press and Media'));
+    assert.equal((await post('directory-remove', { email: 'lead1@miuegypt.edu.eg' }, leadSession)).status, 200);
+    assert.equal((await post('directory-save', { email: 'member2@gmail.com', name: 'Roster Member', role: 'Member', committee: 'Press and Media' }, owner)).status, 200);
     assert.equal((await post('custom-role', { name: 'Learning editor', permissions: ['learning'] }, owner)).status, 200);
     assert.equal((await post('member-email', { email: 'delegate@example.test', role: 'Learning editor', committee: 'Security Council' }, owner)).status, 200);
     assert.equal((await (await get('/api/session', member)).json()).data.profile.role, 'Learning editor');
