@@ -381,8 +381,9 @@ async function mutate(path, member, body) {
   if (path === 'activity') {
     requirePermission(member, 'activities');
     const title = clean(body.title, 100, 'activity title');
-    const kind = clean(body.kind, 30, 'activity type');
-    check(['Event', 'Training', 'Competition', 'Challenge', 'Organizing'].includes(kind), 'Choose an activity type.');
+    // 'Other' lets the board write its own activity type.
+    const kind = body.kind === 'Other' ? clean(body.customKind, 30, 'activity type') : clean(body.kind, 30, 'activity type');
+    check(['Event', 'Training', 'Competition', 'Challenge', 'Organizing'].includes(kind) || /^[\p{L}\p{N}][\p{L}\p{N} &'-]{0,29}$/u.test(kind), 'Choose an activity type.');
     const time = clean(body.starts, 40, 'start time');
     check(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(time) && Number.isFinite(Date.parse(time)), 'Enter a start time with timezone.');
     const committee = scopeOf(member) || clean(body.committee || '', 60, 'committee', true) || null;
