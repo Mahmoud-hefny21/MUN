@@ -223,6 +223,10 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('directory-save', { email: 'owner@example.test', name: 'owner', role: 'President' }, chiefSession)).status, 200);
     assert.equal((await (await get('/api/session', owner)).json()).data.profile.role, 'President');
     assert.equal((await post('directory-save', { email: 'x2@miuegypt.edu.eg', name: 'X', role: 'Admin' }, chiefSession)).status, 400);
+    assert.equal((await post('role-access', { role: 'Assigned Admin', permissions: ['learning'] }, owner)).status, 403);
+    assert.equal((await post('role-access', { role: 'Assigned Admin', permissions: ['learning', 'posts'] }, chiefSession)).status, 200);
+    assert.deepEqual((await (await get('/api/session', chiefSession)).json()).data.boardRoleAccess['Assigned Admin'], ['learning', 'posts']);
+    assert.equal((await post('role-access', { role: 'Assigned Admin', permissions: ['learning'] }, chiefSession)).status, 200);
     assert.equal((await post('custom-role', { name: 'Learning editor', permissions: ['learning'] }, owner)).status, 200);
     assert.equal((await post('member-email', { email: 'delegate@example.test', role: 'Learning editor', committee: 'Security Council' }, owner)).status, 200);
     assert.equal((await (await get('/api/session', member)).json()).data.profile.role, 'Learning editor');

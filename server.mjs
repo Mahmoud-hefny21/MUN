@@ -159,6 +159,7 @@ async function googleLogin(req, res, url) {
 async function memberFor(req) {
   const session = cookie(req, 'mun_session');
   if (!session) return null;
+  await loadRoleAccess();
   const member = await get(`SELECT m.*, r.permissions AS custom_permissions, r.committee_scoped AS custom_scoped FROM mun_members m
     JOIN mun_sessions s ON m.id=s.member LEFT JOIN mun_custom_roles r ON r.name=m.role
     WHERE s.id=? AND s.expires>?`, digest(session), Date.now());
@@ -177,6 +178,16 @@ const rolePermissions = {
   'Assigned Admin': ['learning'],
   Member: []
 };
+// The Admin can change what each built-in role may do (stored in mun_settings 'role-access'); Admin itself always has everything.
+const allPermissions = ['members', 'posts', 'points', 'learning', 'activities'];
+const defaultRolePermissions = structuredClone(rolePermissions);
+async function loadRoleAccess() {
+  const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
+  const saved = row ? (typeof row.value === 'string' ? parse(row.value) : row.value) : {};
+  for (const role of Object.keys(defaultRolePermissions)) {
+    rolePermissions[role] = role !== 'Admin' && Array.isArray(saved?.[role]) ? saved[role].filter(p => allPermissions.includes(p)) : [...defaultRolePermissions[role]];
+  }
+}
 const permissionsFor = member => (member.role === 'Head' || member.custom_scoped) && !member.committee ? [] : (Object.hasOwn(rolePermissions, member.role) ? rolePermissions[member.role] : member.custom_permissions || []);
 // Full-access roles are granted only by an administrator (provision scripts), never from the board workspace.
 const protectedRoles = ['Admin', 'President', 'Co-President'];
@@ -503,6 +514,20 @@ async function mutate(path, member, body) {
         clean(body.reason, 120, 'reason') + ' · by ' + member.name);
     });
     return 'Points adjustment recorded.';
+  }
+  if (path === 'role-access') {
+    check(member.role === 'Admin', 'Only the Admin can change role access.', 403);
+    const role = String(body.role || '');
+    check(Object.hasOwn(defaultRolePermissions, role) && role !== 'Admin', 'Choose a role.');
+    const list = body.permissions === undefined ? [] : [].concat(body.permissions);
+    check(list.every(p => allPermissions.includes(p)), 'Choose valid permissions.');
+    const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
+    const saved = row ? (typeof row.value === 'string' ? parse(row.value) : row.value) || {} : {};
+    saved[role] = [...new Set(list)];
+    await run("INSERT INTO mun_settings(key, value) VALUES ('role-access', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(saved));
+    await audit(member.id, 'role.access', role);
+    await loadRoleAccess();
+    return role + ' access saved.';
   }
   if (path === 'custom-role') {
     requirePermission(member, 'members');
