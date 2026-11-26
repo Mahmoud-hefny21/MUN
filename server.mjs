@@ -252,7 +252,7 @@ async function snapshot(member) {
     unread: get(`SELECT COUNT(*)::integer AS total FROM mun_notifications n
       JOIN mun_notification_events e ON e.id=n.event_id
       WHERE n.member=? AND n.read_at IS NULL AND (e.committee IS NULL OR e.committee=?)`, member.id, member.committee),
-    quizBank: can('learning') ? all('SELECT id, question FROM mun_quizzes ORDER BY id DESC LIMIT 100') : none,
+    quizBank: can('learning') ? all('SELECT id, question FROM mun_quizzes ORDER BY id DESC LIMIT 500') : none,
     pushPreference: push.preference(member.id),
     pushDelivery: protectedRoles.includes(member.role) ? push.deliverySummary() : null,
     fantasySettings: can('points') && !scope ? fantasy.settings() : null
