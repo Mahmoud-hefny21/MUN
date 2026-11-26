@@ -228,7 +228,10 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('custom-role', { name: 'Temp Role', permissions: ['posts'] }, chiefSession)).status, 200);
     assert.equal((await post('role-access', { role: 'Temp Role', permissions: ['posts', 'points'] }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Temp Role' }, owner)).status, 200);
-    assert.equal((await post('role-delete', { role: 'Head' }, owner)).status, 400);
+    assert.equal((await post('role-delete', { role: 'Member' }, owner)).status, 400);
+    assert.equal((await post('role-delete', { role: 'Vice President' }, owner)).status, 200);
+    assert.equal((await post('directory-save', { email: 'x3@miuegypt.edu.eg', name: 'X', role: 'Vice President' }, chiefSession)).status, 400);
+    assert.equal((await post('role-delete', { role: 'Vice President', restore: 'true' }, owner)).status, 200);
     assert.equal((await post('publish', { type: 'Other', customType: 'Social Event', title: 'Iftar', body: 'Friday' }, owner)).status, 200);
     assert.equal((await post('publish', { type: 'Other', customType: '', title: 'x', body: 'y' }, owner)).status, 400);
     assert.equal((await post('role-access', { role: 'Assigned Admin', permissions: ['learning', 'posts'] }, chiefSession)).status, 200);

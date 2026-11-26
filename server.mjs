@@ -181,7 +181,13 @@ const rolePermissions = {
 // The Admin can change what each built-in role may do (stored in mun_settings 'role-access'); Admin itself always has everything.
 const allPermissions = ['members', 'posts', 'points', 'learning', 'activities'];
 const defaultRolePermissions = structuredClone(rolePermissions);
+// Built-in roles the Admin or President removed; Admin, President and Member always stay.
+const deletedRoles = new Set();
+const permanentRoles = ['Admin', 'President', 'Member'];
 async function loadRoleAccess() {
+  const removed = await get("SELECT value FROM mun_settings WHERE key='deleted-roles'");
+  deletedRoles.clear();
+  for (const role of removed ? parse(removed.value) || [] : []) if (!permanentRoles.includes(role)) deletedRoles.add(role);
   const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
   const saved = row ? (typeof row.value === 'string' ? parse(row.value) : row.value) : {};
   for (const role of Object.keys(defaultRolePermissions)) {
@@ -203,7 +209,7 @@ const canManageAccount = (actor, account) => actorRank(actor) > rank(account.rol
   (!scopeOf(actor) || account.committee === scopeOf(actor));
 const customRolePermissions = role => Array.isArray(role.permissions) ? role.permissions : parse(role.permissions || '[]');
 // Grantable: below your rank, gives no permission you lack, and Heads can only add plain Members.
-const grantable = (role, permissions, actor) => role !== 'Admin' && (role !== 'President' || actor.role === 'Admin') && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
+const grantable = (role, permissions, actor) => role !== 'Admin' && !deletedRoles.has(role) && (role !== 'President' || actor.role === 'Admin') && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
   permissions.every(permission => permissionsFor(actor).includes(permission)) && (!scopeOf(actor) || role === 'Member');
 const assignableRole = async (role, actor) => {
   if (typeof role !== 'string' || !actor) return false;
@@ -285,7 +291,8 @@ async function snapshot(member) {
       ...data.customRoles.filter(role => grantable(role.name, customRolePermissions(role), member)).map(role => role.name)] : [],
     // What each role can do, shown next to the role picker.
     customRoles: can('members') ? data.customRoles.map(role => ({ name: role.name })) : [],
-    boardRoleAccess: can('members') ? Object.fromEntries([...Object.entries(rolePermissions), ...data.customRoles.map(role => [role.name, customRolePermissions(role)])]) : {},
+    deletedRoles: can('members') ? [...deletedRoles] : [],
+    boardRoleAccess: can('members') ? Object.fromEntries([...Object.entries(rolePermissions).filter(([role]) => !deletedRoles.has(role)), ...data.customRoles.map(role => [role.name, customRolePermissions(role)])]) : {},
     scope,
     boardInvites: data.invites,
     committees: data.committees,
@@ -543,6 +550,26 @@ async function mutate(path, member, body) {
   if (path === 'role-delete') {
     check(['Admin', 'President'].includes(member.role), 'Only the Admin or the President can delete roles.', 403);
     const role = String(body.role || '');
+    if (body.restore === 'true' || body.restore === true) {
+      check(deletedRoles.has(role), 'Choose a role.');
+      deletedRoles.delete(role);
+      await run("INSERT INTO mun_settings(key, value) VALUES ('deleted-roles', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify([...deletedRoles]));
+      await audit(member.id, 'role.restore', role);
+      return role + ' restored.';
+    }
+    if (Object.hasOwn(defaultRolePermissions, role)) {
+      check(!permanentRoles.includes(role) && !deletedRoles.has(role), 'This role cannot be deleted.');
+      check(role !== 'Co-President' || member.role === 'Admin', 'Only the Admin can delete Co-President.', 403);
+      await transact(async () => {
+        deletedRoles.add(role);
+        await run("INSERT INTO mun_settings(key, value) VALUES ('deleted-roles', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify([...deletedRoles]));
+        await run("UPDATE mun_members SET role='Member' WHERE role=?", role);
+        await run('DELETE FROM mun_member_invites WHERE role=?', role);
+        await run("UPDATE mun_roster SET role='Member' WHERE role=?", role);
+        await audit(member.id, 'role.delete', role);
+      });
+      return role + ' deleted. Its members are now Members.';
+    }
     await transact(async () => {
       check((await run('DELETE FROM mun_custom_roles WHERE name=?', role)).changes === 1, 'Only roles you created can be deleted.');
       await run("UPDATE mun_members SET role='Member' WHERE role=?", role);
