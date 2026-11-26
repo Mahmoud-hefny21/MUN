@@ -807,7 +807,11 @@ const assets = {
   '/icons/icon-192.png': [new URL('./dist/icons/icon-192.png', import.meta.url), 'image/png'],
   '/icons/icon-512.png': [new URL('./dist/icons/icon-512.png', import.meta.url), 'image/png'],
   '/icons/maskable.png': [new URL('./dist/icons/maskable.png', import.meta.url), 'image/png'],
-  '/icons/apple.png': [new URL('./dist/icons/apple.png', import.meta.url), 'image/png']
+  '/icons/apple.png': [new URL('./dist/icons/apple.png', import.meta.url), 'image/png'],
+  '/fonts/libertinus-serif-400-normal.woff2': [new URL('./dist/fonts/libertinus-serif-400-normal.woff2', import.meta.url), 'font/woff2'],
+  '/fonts/libertinus-serif-400-italic.woff2': [new URL('./dist/fonts/libertinus-serif-400-italic.woff2', import.meta.url), 'font/woff2'],
+  '/fonts/libertinus-serif-600-normal.woff2': [new URL('./dist/fonts/libertinus-serif-600-normal.woff2', import.meta.url), 'font/woff2'],
+  '/fonts/libertinus-serif-700-normal.woff2': [new URL('./dist/fonts/libertinus-serif-700-normal.woff2', import.meta.url), 'font/woff2']
 };
 // Read each static file once per instance; text is pre-gzipped and every file gets an ETag for 304 revalidation.
 const loadedAssets = new Map();
@@ -824,11 +828,12 @@ function loadAsset(path) {
         (_, attribute, name) => attribute + '="/' + name + '?v=' + version('/' + name) + '"'));
     }
     const image = mime.startsWith('image/');
+    const font = mime.startsWith('font/');
     loadedAssets.set(path, {
       mime, body,
       etag: '"' + createHash('sha256').update(body).digest('base64url').slice(0, 22) + '"',
-      gzip: image ? null : gzipSync(body, { level: 9 }),
-      cache: image ? 'public, max-age=86400' : 'no-cache'
+      gzip: image || font ? null : gzipSync(body, { level: 9 }),
+      cache: font ? 'public, max-age=31536000, immutable' : image ? 'public, max-age=86400' : 'no-cache'
     });
   }
   return loadedAssets.get(path);
