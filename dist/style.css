@@ -362,7 +362,13 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .role-actions button { min-height: 36px; padding-inline: 14px; }
 @media (max-width: 700px) {
   .role-line { grid-template-columns: 1fr auto; }
-  .role-line .perm-pills { grid-column: 1 / -1; grid-row: 2; }
+  .role-line { gap: 8px 10px; padding: 10px 0; }
+  .role-line .perm-pills { grid-column: 1 / -1; grid-row: 2; flex-wrap: nowrap; gap: 4px; }
+  .role-line .perm-pill { flex: 1 1 0; min-width: 0; }
+  .role-line .perm-pill span { display: block; text-align: center; font-size: .7rem; padding: 5px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .role-name { font-size: .95rem; }
+  .role-actions { gap: 4px; }
+  .role-actions button { min-height: 32px; padding: 0 10px; font-size: .82rem; }
 }
 /* Points history */
 .pick-list { display: grid; gap: 6px; }
