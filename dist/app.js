@@ -147,9 +147,13 @@ function squadTab() {
   const f = fantasyData;
   const squad = shownSquad();
   const size = f.settings.squadSize;
+  // Delegates are members who have signed in; until enough have joined, a full squad is not possible.
+  const available = f.players.filter(player => player.id !== state.profile.id).length;
   if (!squad && !draft) {
     return `<section class="card fx-empty">${icon('trophy')}<h2>Build your delegation</h2><p>Pick ${size} delegates within ${credits(f.settings.budget)}. Their real club points become your fantasy points from next round; your captain scores ×${f.settings.captainMultiplier}.</p>
-      ${f.settings.enabled ? '<button class="primary" data-fx="edit">Pick your squad</button>' : '<p class="notice">Fantasy is paused by the board.</p>'}</section>`;
+      ${!f.settings.enabled ? '<p class="notice">Fantasy is paused by the board.</p>'
+        : available < size ? `<p class="notice">Fantasy opens when ${size} other delegates have joined the portal (${available} so far). Invite your committee to sign in!</p>`
+        : '<button class="primary" data-fx="edit">Pick your squad</button>'}</section>`;
   }
   const playing = !draft && !f.upcoming && Boolean(f.squad);
   const ids = squad.players;
