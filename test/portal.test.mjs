@@ -277,6 +277,23 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('directory-remove', { email: 'hb@miuegypt.edu.eg' }, rosteredSession)).status, 200);
     assert.equal((await post('directory-save', { email: 'rostered@gmail.com', name: 'Rostered Board Lead', role: 'Co-President', committee: 'Operations' }, owner)).status, 200);
     assert.equal((await post('directory-save', { email: 'member2@gmail.com', name: 'Roster Member', role: 'Member', committee: 'Press and Media' }, owner)).status, 200);
+    const plainMemberForFantasy = await login('member2');
+    // Fantasy over HTTP: page data, rules permissions, saving a squad.
+    const fantasyView = await (await post('fantasy', {}, owner)).json();
+    assert.equal(fantasyView.round.number, 1);
+    assert.ok(fantasyView.players.length >= 2 && fantasyView.players.every(player => player.price === fantasyView.settings.startPrice));
+    assert.equal((await post('fantasy-settings', { squadSize: '2' }, plainMemberForFantasy)).status, 403);
+    assert.equal((await post('fantasy-settings', { squadSize: '0' }, owner)).status, 400);
+    assert.equal((await post('fantasy-settings', { squadSize: '2' }, owner)).status, 200);
+    assert.equal((await (await get('/api/session', owner)).json()).data.fantasySettings.squadSize, 2);
+    const ownerId = (await (await get('/api/session', owner)).json()).data.profile.id;
+    const picks = fantasyView.players.filter(player => player.id !== ownerId).slice(0, 2).map(player => player.id);
+    assert.equal((await post('fantasy-squad', { players: [ownerId, picks[0]], captain: picks[0] }, owner)).status, 400);
+    const savedSquad = await (await post('fantasy-squad', { players: picks, captain: picks[1] }, owner)).json();
+    assert.equal(savedSquad.message, 'Squad saved for next round.');
+    assert.deepEqual([...savedSquad.data.upcoming.players].sort(), [...picks].sort());
+    assert.equal(savedSquad.data.upcoming.captain, picks[1]);
+    assert.equal((await post('fantasy-settings', { squadSize: '5' }, owner)).status, 200);
     // Resources: add, edit, delete, and a signed upload ticket for PDFs.
     const plainMember = await login('member2');
     assert.equal((await post('resource', { title: 'Delegate handbook', category: 'Guide', body: 'Club handbook', url: 'https://res.cloudinary.com/fixture-cloud/raw/upload/v1/mun/resources/handbook.pdf' }, plainMember)).status, 403);

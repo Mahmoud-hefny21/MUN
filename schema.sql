@@ -102,3 +102,20 @@
     email TEXT PRIMARY KEY, role TEXT NOT NULL, committee TEXT NOT NULL,
     granted_by TEXT NOT NULL REFERENCES mun_members(id), created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+
+  -- Fantasy (FPL-style): settings, per-round prices, squads and transfer hits. Rounds are Monday dates (YYYY-MM-DD).
+  CREATE TABLE IF NOT EXISTS mun_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS mun_fantasy_prices (
+    player TEXT NOT NULL REFERENCES mun_members(id), round TEXT NOT NULL, price INTEGER NOT NULL,
+    PRIMARY KEY (player, round)
+  );
+  CREATE INDEX IF NOT EXISTS mun_fantasy_prices_round ON mun_fantasy_prices(round);
+  CREATE TABLE IF NOT EXISTS mun_fantasy_picks (
+    manager TEXT NOT NULL REFERENCES mun_members(id), round TEXT NOT NULL, player TEXT NOT NULL REFERENCES mun_members(id),
+    captain BOOLEAN NOT NULL DEFAULT false, PRIMARY KEY (manager, round, player)
+  );
+  CREATE TABLE IF NOT EXISTS mun_fantasy_entries (
+    manager TEXT NOT NULL REFERENCES mun_members(id), round TEXT NOT NULL, transfers INTEGER NOT NULL DEFAULT 0, hit INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (manager, round)
+  );
+  CREATE INDEX IF NOT EXISTS mun_transactions_date ON mun_transactions(date);

@@ -9,6 +9,7 @@ import { profileUpdate } from './packages/contracts/src/common.mjs';
 import { generateAnswer } from './assistant-providers.mjs';
 import { createDatabase } from './database.mjs';
 import { createPush } from './onesignal.mjs';
+import { createFantasy } from './fantasy.mjs';
 
 const env = process.env;
 const port = Number(env.PORT || 3000);
@@ -25,6 +26,7 @@ if (googleCallback.origin !== origin || !googleCallbacks.includes(googleCallback
 const redirectUri = googleCallback.href;
 const { run, get, all, transact, close } = await createDatabase();
 const push = createPush({ env, origin, run, get, all });
+const fantasy = createFantasy({ run, get, all, transact, today: () => today() });
 const json = JSON.stringify;
 const parse = JSON.parse;
 const token = () => randomBytes(32).toString('base64url');
@@ -251,7 +253,8 @@ async function snapshot(member) {
       WHERE n.member=? AND n.read_at IS NULL AND (e.committee IS NULL OR e.committee=?)`, member.id, member.committee),
     quizBank: can('learning') ? all('SELECT id, question FROM mun_quizzes ORDER BY id DESC LIMIT 100') : none,
     pushPreference: push.preference(member.id),
-    pushDelivery: protectedRoles.includes(member.role) ? push.deliverySummary() : null
+    pushDelivery: protectedRoles.includes(member.role) ? push.deliverySummary() : null,
+    fantasySettings: can('points') && !scope ? fantasy.settings() : null
   };
   const keys = Object.keys(pending);
   const values = await Promise.all(Object.values(pending));
@@ -291,6 +294,7 @@ async function snapshot(member) {
     quizBank: data.quizBank,
     pushPreference: data.pushPreference,
     pushDelivery: data.pushDelivery,
+    fantasySettings: data.fantasySettings,
     permissions, aiEnabled: providers.length > 0, photoUpload: photoUploadReady()
   };
 }
@@ -652,6 +656,13 @@ async function mutate(path, member, body) {
     });
     return 'Resource added.';
   }
+  if (path === 'fantasy-settings') {
+    requirePermission(member, 'points');
+    check(!scopeOf(member), 'Only club-wide points managers can change Fantasy rules.', 403);
+    await fantasy.saveSettings(body);
+    await audit(member.id, 'fantasy.settings', 'fantasy');
+    return 'Fantasy rules saved.';
+  }
   if (path === 'resource-update') {
     requirePermission(member, 'learning');
     const id = Number(body.id);
@@ -915,6 +926,13 @@ app.use(async (req, res) => {
       const params = { folder: 'mun/resources', timestamp: String(Math.floor(Date.now() / 1000)) };
       const signature = createHash('sha1').update(Object.keys(params).sort().map(key => key + '=' + params[key]).join('&') + cloudinary.secret).digest('hex');
       return respond(res, 200, { url: 'https://api.cloudinary.com/v1_1/' + encodeURIComponent(cloudinary.cloud) + '/raw/upload', fields: { ...params, api_key: cloudinary.key, signature } });
+    }
+    // Fantasy: the page data, and saving a squad for the next round.
+    if (path === '/api/fantasy') return respond(res, 200, await fantasy.overview(currentMember));
+    if (path === '/api/fantasy-squad') {
+      const saved = await fantasy.saveSquad(currentMember, data);
+      const message = 'Squad saved for next round.' + (saved.hit ? ' Extra transfers cost ' + saved.hit + ' points.' : '');
+      return respond(res, 200, { message, data: await fantasy.overview(currentMember) });
     }
     // Any member's points history, for board members who manage points (President, Co-President, Vice President).
     if (path === '/api/points-history') {

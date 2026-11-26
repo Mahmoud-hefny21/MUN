@@ -95,9 +95,201 @@ function pointHistory() {
   if (!state.transactions.length) return '<p>No points yet. Answer the daily quiz and join club activities to earn points.</p>';
   return `<ul class="ranking">${[...state.transactions].reverse().map(entry => `<li><span>${entry.amount > 0 ? '+' : ''}${entry.amount}</span><span>${esc(entry.reason)}<br><small>${esc(entry.date)} · ${esc(entry.by)}</small></span></li>`).join('')}</ul>`;
 }
+// ---------- Fantasy (FPL-style) ----------
+// Data comes from /api/fantasy when the page opens; squad edits are a local draft until saved.
+let fantasyData = null;
+let fantasyLoading = false;
+let fantasyTab = 'squad';
+let draft = null;            // { players: [ids], captain: id } while editing
+let playerSort = 'total';
+let playerQuery = '';
+let leagueFilter = 'overall';
+let fxAnimate = true;
+const credits = value => (value / 10).toFixed(1) + ' cr';
+const firstName = name => shortName(name).split(' ')[0];
+async function loadFantasy(force = false) {
+  if (fantasyLoading || (fantasyData && !force)) return;
+  fantasyLoading = true;
+  try {
+    fantasyData = await api('fantasy', {});
+    fxAnimate = true;
+  } catch (error) {
+    notice = error.message;
+  } finally {
+    fantasyLoading = false;
+    if (location.hash.slice(1).split('/')[0] === 'fantasy') render();
+  }
+}
+const playerById = id => fantasyData.players.find(player => player.id === id);
+// The squad shown: the draft while editing, otherwise next round's squad if saved, otherwise the playing squad.
+const shownSquad = () => draft || fantasyData.upcoming || fantasyData.squad;
+const squadCost = ids => ids.reduce((sum, id) => sum + (playerById(id)?.price || 0), 0);
+const transfersFor = ids => fantasyData.squad ? ids.filter(id => !fantasyData.squad.players.includes(id)).length : 0;
+const daysUntil = date => Math.max(0, Math.ceil((Date.parse(date + 'T00:00:00') - Date.now()) / 86400000));
+const dayLabel = date => new Intl.DateTimeFormat('en', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(date + 'T00:00:00Z'));
+const priceTag = player => `<span class="fx-price">${credits(player.price)}${player.change ? `<b class="${player.change > 0 ? 'up' : 'down'}">${player.change > 0 ? '▲' : '▼'}${(Math.abs(player.change) / 10).toFixed(1)}</b>` : ''}</span>`;
+
+function seat(id, squad, playing) {
+  const player = playerById(id);
+  if (!player) return '';
+  const captain = squad.captain === id;
+  const score = playing ? player.roundPoints * (captain ? fantasyData.settings.captainMultiplier : 1) : player.form;
+  return `<div class="fx-seat${captain ? ' captain' : ''}">
+    ${captain ? '<span class="fx-armband" title="Captain">C</span>' : ''}
+    <button class="fx-seat-face" data-fx="player" data-id="${esc(id)}" aria-label="${esc(player.name)} details">${avatar(player, 'lg')}</button>
+    <strong>${esc(firstName(player.name))}</strong>
+    <span class="fx-seat-score">${playing ? score + ' pts' : 'Form ' + score}</span>
+    <small>${credits(player.price)}</small>
+    ${draft ? `<span class="fx-seat-actions"><button data-fx="captain" data-id="${esc(id)}" aria-pressed="${captain}" title="Make captain">C</button><button data-fx="remove" data-id="${esc(id)}" title="Remove">✕</button></span>` : ''}
+  </div>`;
+}
+function squadTab() {
+  const f = fantasyData;
+  const squad = shownSquad();
+  const size = f.settings.squadSize;
+  if (!squad && !draft) {
+    return `<section class="card fx-empty">${icon('trophy')}<h2>Build your delegation</h2><p>Pick ${size} delegates within ${credits(f.settings.budget)}. Their real club points become your fantasy points from next round; your captain scores ×${f.settings.captainMultiplier}.</p>
+      ${f.settings.enabled ? '<button class="primary" data-fx="edit">Pick your squad</button>' : '<p class="notice">Fantasy is paused by the board.</p>'}</section>`;
+  }
+  const playing = !draft && !f.upcoming && Boolean(f.squad);
+  const ids = squad.players;
+  const cost = squadCost(ids);
+  const transfers = draft ? transfersFor(ids) : (f.upcoming?.transfers || 0);
+  const hit = Math.max(0, transfers - f.settings.freeTransfers) * f.settings.transferPenalty;
+  const seats = ids.map(id => seat(id, squad, playing));
+  const open = draft ? Array.from({ length: Math.max(0, size - ids.length) }, () => '<div class="fx-seat empty"><span class="avatar lg">+</span><strong>Open seat</strong><small>Add from the list</small></div>') : [];
+  const all = [...seats, ...open];
+  const captainIndex = ids.indexOf(squad.captain);
+  if (captainIndex > 0 && !draft) all.splice(Math.floor(all.length / 2), 0, all.splice(captainIndex, 1)[0]);
+  return `<section class="card fx-pitch-card">
+      <div class="section-head"><h2>${draft ? 'Edit squad' : playing ? 'Playing this round' : 'Your squad for Round ' + (f.round.number + 1)}</h2>
+        ${draft ? '' : f.settings.enabled ? '<button data-fx="edit">Transfers</button>' : ''}</div>
+      <div class="fx-chamber">${all.join('')}</div>
+      <div class="fx-meter"><span>Squad cost <b>${credits(cost)}</b> of ${credits(f.settings.budget)}</span><span class="${cost > f.settings.budget ? 'over' : ''}">Bank <b>${credits(f.settings.budget - cost)}</b></span></div>
+      <div class="fx-bar"><span data-pct="${Math.min(100, Math.round(100 * cost / f.settings.budget))}" class="${cost > f.settings.budget ? 'over' : ''}"></span></div>
+      ${f.squad || draft ? `<p class="hint">Transfers: ${transfers} (${f.settings.freeTransfers} free)${hit ? ` · <b class="fx-hit">−${hit} pts</b>` : ''}. Changes apply from ${dayLabel(f.round.next)}.</p>` : ''}
+      ${draft ? `<div class="actions"><button class="primary" data-fx="save" ${ids.length !== size || !squad.captain || cost > f.settings.budget ? 'disabled' : ''}>Save squad</button><button data-fx="cancel">Cancel</button></div>
+        ${ids.length === size && !squad.captain ? '<p class="hint">Tap C on a delegate to choose your captain.</p>' : ''}` : ''}
+    </section>
+    ${draft ? playersTab(true) : ''}`;
+}
+function playersTab(picking = false) {
+  const f = fantasyData;
+  const q = playerQuery.trim().toLowerCase();
+  const chosen = draft?.players || [];
+  const list = f.players.filter(player => player.id !== state.profile.id && (!q || player.name.toLowerCase().includes(q) || (player.committee || '').toLowerCase().includes(q)))
+    .sort((a, b) => (b[playerSort] - a[playerSort]) || a.name.localeCompare(b.name));
+  const sorts = [['total', 'Total'], ['form', 'Form'], ['roundPoints', 'Round'], ['price', 'Price'], ['selectedBy', 'Picked %']];
+  return `<section class="card stack">
+    <div class="section-head"><h2>${picking ? 'Add delegates' : 'Delegates'}</h2><span class="count">${list.length}</span></div>
+    <div class="directory-tools"><input id="fx-search" type="search" placeholder="Search name or committee" aria-label="Search delegates" value="${esc(playerQuery)}"><select id="fx-sort" aria-label="Sort delegates">${sorts.map(([key, label]) => `<option value="${key}" ${key === playerSort ? 'selected' : ''}>Sort: ${label}</option>`).join('')}</select></div>
+    <div class="fx-list">${list.slice(0, 60).map(player => {
+      const inSquad = chosen.includes(player.id);
+      const full = chosen.length >= f.settings.squadSize;
+      const affordable = squadCost(chosen) + player.price <= f.settings.budget;
+      return `<div class="fx-row${inSquad ? ' picked' : ''}">
+        <button class="fx-row-main" data-fx="player" data-id="${esc(player.id)}">${avatar(player)}<span class="list-main"><strong>${esc(shortName(player.name))}</strong><small>${esc(player.committee || 'No committee')}</small></span></button>
+        <span class="fx-stats"><span><b>${player.total}</b><small>pts</small></span><span><b>${player.form}</b><small>form</small></span><span><b>${player.selectedBy}%</b><small>picked</small></span></span>
+        ${priceTag(player)}
+        ${picking ? (inSquad ? `<button class="fx-add on" data-fx="remove" data-id="${esc(player.id)}" aria-label="Remove ${esc(player.name)}">✓</button>`
+          : `<button class="fx-add" data-fx="add" data-id="${esc(player.id)}" ${full || !affordable ? 'disabled' : ''} aria-label="Add ${esc(player.name)}">+</button>`) : ''}
+      </div>`;
+    }).join('') || '<p>No delegate matches your search.</p>'}</div></section>`;
+}
+function leaguesTab() {
+  const f = fantasyData;
+  const committee = state.profile.committee;
+  const rows = leagueFilter === 'committee' ? f.league.filter(row => row.committee && row.committee === committee) : f.league;
+  const table = list => `<ol class="fx-table">${list.map((row, index) => `<li class="${row.id === state.profile.id ? 'me' : ''}"><span class="fx-rank">${leagueFilter === 'committee' ? index + 1 : row.rank}</span><span class="list-main"><strong>${esc(shortName(row.name))}${row.id === state.profile.id ? ' · You' : ''}</strong><small>${esc(row.committee || '')}</small></span><span class="fx-col">${row.round}<small>round</small></span><span class="fx-col total">${row.total}<small>total</small></span></li>`).join('') || '<li class="hint">No managers yet. Pick a squad to enter.</li>'}</ol>`;
+  return `<div class="grid fx-leagues">
+    <section class="card stack"><div class="section-head"><h2>Standings</h2><span class="count">${f.managers} managers</span></div>
+      <div class="filter-row">${[['overall', 'Overall'], ...(committee ? [['committee', committee]] : [])].map(([id, label]) => `<button data-fx="league" data-id="${esc(id)}" class="${leagueFilter === id ? 'selected' : ''}">${esc(label)}</button>`).join('')}</div>
+      ${table(rows)}</section>
+    <div class="stack">
+      <section class="card stack"><h2>Dream delegation</h2><p class="hint">Top scorers of Round ${f.round.number} so far.</p>
+        <div class="fx-dream">${f.dreamTeam.map((player, index) => `<button class="fx-dream-seat" data-fx="player" data-id="${esc(player.id)}">${index === 0 ? '<span class="fx-armband">★</span>' : ''}${avatar(player)}<strong>${esc(firstName(player.name))}</strong><small>${player.roundPoints} pts</small></button>`).join('') || '<p class="hint">No points scored yet this round.</p>'}</div></section>
+      <section class="card stack"><h2>Round leaders</h2>${f.roundLeague.length ? `<ol class="fx-table compact">${f.roundLeague.slice(0, 5).map((row, index) => `<li class="${row.id === state.profile.id ? 'me' : ''}"><span class="fx-rank">${index + 1}</span><span class="list-main"><strong>${esc(shortName(row.name))}</strong></span><span class="fx-col total">${row.round}<small>pts</small></span></li>`).join('')}</ol>` : '<p class="hint">No squads are playing yet.</p>'}</section>
+      <section class="card stack"><h2>Achievements</h2><div class="fx-badges">${f.achievements.map(item => `<div class="fx-badge${item.earned ? ' earned' : ''}"><span>${icon(item.earned ? 'star' : 'shield')}</span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></div>`).join('')}</div></section>
+    </div></div>`;
+}
+function rulesCard() {
+  const s = fantasyData.settings;
+  return `<details class="card fx-rules"><summary>${icon('book')} How MUN Fantasy works</summary><ul>
+    <li>Pick ${s.squadSize} delegates (not yourself) within ${credits(s.budget)}. Choose a captain: their points count ×${s.captainMultiplier}.</li>
+    <li>Your delegates score the real club points they earn each week (quizzes, activities, awards). A round runs Monday to Sunday, Cairo time.</li>
+    <li>Squad changes apply from the next round. ${s.freeTransfers} free transfer${s.freeTransfers === 1 ? '' : 's'} per round; each extra costs ${s.transferPenalty} points.</li>
+    <li>Prices update every round: ${s.riseThreshold}+ points last round raises a delegate by ${credits(s.priceStep)}; ${s.fallThreshold} or fewer lowers them (${credits(s.minPrice)} to ${credits(s.maxPrice)}).</li>
+  </ul></details>`;
+}
 function fantasy() {
-  return heading('Fantasy', 'Earn points through club activities and track the standings.') + stats() +
-    `<div class="grid"><section class="card"><h2>Leaderboard</h2><div class="actions">${[['points','Global'],['week','Weekly'],['month','Monthly']].map(([id, label]) => `<button data-scope="${id}" aria-pressed="${scope === id}" class="${scope === id ? 'selected' : ''}">${label}</button>`).join('')}</div>${ranking(scope)}</section><section class="card"><div class="section-head"><h2>Points history</h2></div>${pointHistory()}</section></div>`;
+  if (!fantasyData) {
+    loadFantasy();
+    return heading('Fantasy', 'Build a delegation of club members and compete every round.') + '<div class="card fx-loading"><span></span><span></span><span></span></div>';
+  }
+  const f = fantasyData;
+  const value = squadCost((f.upcoming || f.squad)?.players || []);
+  const tabs = [['squad', 'My squad'], ['players', 'Delegates'], ['leagues', 'Leagues'], ['points', 'My points']];
+  const body = fantasyTab === 'players' ? playersTab(Boolean(draft)) : fantasyTab === 'leagues' ? leaguesTab()
+    : fantasyTab === 'points' ? stats() + `<div class="grid"><section class="card"><h2>Delegate standings</h2><div class="actions">${[['points', 'Global'], ['week', 'Weekly'], ['month', 'Monthly']].map(([id, label]) => `<button data-scope="${id}" aria-pressed="${scope === id}" class="${scope === id ? 'selected' : ''}">${label}</button>`).join('')}</div>${ranking(scope)}</section><section class="card"><div class="section-head"><h2>Points history</h2></div>${pointHistory()}</section></div>`
+    : squadTab();
+  return `<div class="fx-page${fxAnimate ? ' fx-enter' : ''}"><div class="fx-hero">
+      <div><span class="eyebrow">MUN Fantasy · Round ${f.round.number}</span><h1>Fantasy</h1><p>${dayLabel(f.round.start)} – ${dayLabel(f.round.end)} · Next round in ${daysUntil(f.round.next)} day${daysUntil(f.round.next) === 1 ? '' : 's'}</p></div>
+      <div class="fx-scores">
+        <div><b data-count="${f.me?.round ?? 0}">${f.me?.round ?? 0}</b><small>Round</small></div>
+        <div><b data-count="${f.me?.total ?? 0}">${f.me?.total ?? 0}</b><small>Total</small></div>
+        <div><b>${f.me ? '#' + f.me.rank : '–'}</b><small>of ${f.managers}</small></div>
+        <div><b>${value ? (value / 10).toFixed(1) : '–'}</b><small>Value (cr)</small></div>
+      </div></div>
+    <nav class="fx-tabs" aria-label="Fantasy sections">${tabs.map(([id, label]) => `<button data-fx="tab" data-id="${id}" aria-current="${fantasyTab === id ? 'page' : 'false'}">${label}</button>`).join('')}</nav>
+    ${body}${fantasyTab === 'squad' ? rulesCard() : ''}</div>`;
+}
+function playerCard(id) {
+  const player = playerById(id);
+  if (!player) return;
+  const body = openModal(player.name).querySelector('.modal-body');
+  body.classList.remove('history-box');
+  body.innerHTML = `<div class="fx-card">${avatar(player, 'xl')}<p>${esc(player.committee || 'No committee')}</p>${priceTag(player)}</div>
+    <div class="fx-card-stats">${[['Total', player.total], ['This round', player.roundPoints], ['Last round', player.lastRound], ['Form', player.form], ['Picked by', player.selectedBy + '%']].map(([label, value]) => `<div><b>${value}</b><small>${label}</small></div>`).join('')}</div>
+    ${draft && player.id !== state.profile.id ? (draft.players.includes(player.id) ? `<button class="danger" data-fx="remove" data-id="${esc(player.id)}" data-close-modal>Remove from squad</button>` : `<button class="primary" data-fx="add" data-id="${esc(player.id)}" data-close-modal>Add to squad</button>`) : ''}`;
+}
+// Count-up for headline numbers (skipped when the user prefers reduced motion).
+function animateCounts() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  content.querySelectorAll('[data-count]').forEach(element => {
+    const target = Number(element.dataset.count);
+    if (!target) return;
+    const started = performance.now();
+    const step = now => {
+      const progress = Math.min(1, (now - started) / 700);
+      element.textContent = Math.round(target * (1 - Math.pow(1 - progress, 3)));
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+async function fantasyAction(button) {
+  const { fx, id } = button.dataset;
+  const size = fantasyData?.settings.squadSize;
+  if (fx === 'tab') { fantasyTab = id; fxAnimate = true; return render(); }
+  if (fx === 'league') { leagueFilter = id; return render(); }
+  if (fx === 'player') return playerCard(id);
+  if (fx === 'edit') {
+    const base = fantasyData.upcoming || fantasyData.squad;
+    draft = { players: base ? [...base.players] : [], captain: base?.captain || null };
+    fantasyTab = 'squad';
+    return render();
+  }
+  if (fx === 'cancel') { draft = null; return render(); }
+  if (fx === 'add' && draft && draft.players.length < size && !draft.players.includes(id)) draft.players.push(id);
+  if (fx === 'remove' && draft) { draft.players = draft.players.filter(item => item !== id); if (draft.captain === id) draft.captain = null; }
+  if (fx === 'captain' && draft) draft.captain = id;
+  if (fx === 'save' && draft) return perform(button, async () => {
+    const result = await api('fantasy-squad', { players: draft.players, captain: draft.captain });
+    fantasyData = result.data;
+    draft = null;
+    notice = result.message;
+  });
+  render();
 }
 
 function quiz() {
@@ -345,6 +537,8 @@ function openModal(title) {
 }
 function closeModal() { document.querySelector('#modal')?.remove(); }
 document.addEventListener('click', event => {
+  const fx = event.target.closest('#modal [data-fx]');
+  if (fx && fantasyData) fantasyAction(fx);
   if (event.target.id === 'modal' || event.target.closest('[data-close-modal]')) closeModal();
 });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
@@ -358,6 +552,24 @@ function admin() {
       <label>Title<input name="title" maxlength="100" required value="${esc(editing?.title)}"></label><label>Message<textarea name="body" maxlength="1500" required>${esc(editing?.body)}</textarea></label>
       <label>Poll choices (one per line)<textarea name="options" maxlength="400">${esc(editing?.options.join('\n'))}</textarea></label><button class="primary">${editing ? 'Save changes' : 'Publish'}</button></form>${editing ? '<button data-cancel-edit>Cancel editing</button>' : ''}</section>
       <section class="card stack"><h2>Manage posts</h2>${postOrder().filter(post => post.manageable).map(post => `<div class="list-row"><span class="list-main"><strong>${esc(post.title)}</strong><small>${esc(post.type)}${post.pinned ? ' · Pinned' : ''} · ${timeAgo(post.created)}</small></span><span class="row-actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button class="danger" data-delete="${esc(post.id)}">Delete</button></span></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
+  const fs = state.fantasySettings;
+  const cr = value => (value / 10).toFixed(1);
+  const fantasyRules = fs ? `<section class="card stack"><h2>Fantasy rules</h2><p class="hint">Apply to every manager. Prices change automatically at the start of each round.</p>
+    <form data-action="fantasy-settings"><div class="form-grid">
+      <label>Fantasy<select name="enabled"><option value="true" ${fs.enabled ? 'selected' : ''}>Open</option><option value="false" ${fs.enabled ? '' : 'selected'}>Paused</option></select></label>
+      <label>Season start (Monday)<input type="date" name="seasonStart" value="${esc(fs.seasonStart)}"></label>
+      <label>Squad size<input type="number" name="squadSize" min="1" max="11" value="${fs.squadSize}"></label>
+      <label>Budget (cr)<input type="number" name="budget" step="0.1" min="5" max="200" value="${cr(fs.budget)}"></label>
+      <label>Captain multiplier<input type="number" name="captainMultiplier" min="1" max="5" value="${fs.captainMultiplier}"></label>
+      <label>Free transfers per round<input type="number" name="freeTransfers" min="0" max="5" value="${fs.freeTransfers}"></label>
+      <label>Points per extra transfer<input type="number" name="transferPenalty" min="0" max="20" value="${fs.transferPenalty}"></label>
+      <label>Start price (cr)<input type="number" name="startPrice" step="0.1" min="1" max="30" value="${cr(fs.startPrice)}"></label>
+      <label>Price change (cr)<input type="number" name="priceStep" step="0.1" min="0" max="5" value="${cr(fs.priceStep)}"></label>
+      <label>Rise at (round pts ≥)<input type="number" name="riseThreshold" min="1" max="100" value="${fs.riseThreshold}"></label>
+      <label>Fall at (round pts ≤)<input type="number" name="fallThreshold" min="-50" max="50" value="${fs.fallThreshold}"></label>
+      <label>Lowest price (cr)<input type="number" name="minPrice" step="0.1" min="1" max="30" value="${cr(fs.minPrice)}"></label>
+      <label>Highest price (cr)<input type="number" name="maxPrice" step="0.1" min="1" max="30" value="${cr(fs.maxPrice)}"></label>
+    </div><button class="primary">Save Fantasy rules</button></form></section>` : '';
   const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${scopedMembers().map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>
     <section class="card stack"><h2>Member points history</h2><p class="hint">Search any member to see every point they earned or lost, and who recorded it.</p><input id="history-search" type="search" placeholder="Search a member by name" aria-label="Search a member by name" autocomplete="off"><div id="history-results" class="pick-list">${historyMatches('')}</div><div id="points-history" class="history-box" aria-live="polite"></div></section>` : '';
   const learningPanel = can('learning') ? `<section class="card stack"><h2>Add quiz question</h2><form data-action="add-quiz"><label>Question<input name="question" required maxlength="150"></label><label>Correct answer<input name="answer" required maxlength="100"></label><label>Other choices (one per line)<textarea name="options" required maxlength="300"></textarea></label><label>Explanation<input name="explanation" required maxlength="240"></label><button class="primary">Add to quiz bank</button></form></section>
@@ -419,7 +631,7 @@ function admin() {
     { id: 'roles', label: 'Roles & access', content: rolePanel },
     { id: 'feed', label: 'Feed & polls', content: postPanel },
     { id: 'activities', label: 'Activities', content: activityPanel },
-    { id: 'points', label: 'Points', content: pointsPanel },
+    { id: 'points', label: 'Points', content: pointsPanel + fantasyRules },
     { id: 'learning', label: 'Quiz', content: learningPanel },
     { id: 'resources', label: 'Resources', content: resourcePanel },
     { id: 'delivery', label: 'Push delivery', content: delivery }
@@ -485,6 +697,7 @@ function render() {
   notice = '';
   content.querySelectorAll('[data-pct]').forEach(bar => { bar.style.width = bar.dataset.pct + '%'; });
   content.querySelector('.admin-nav [aria-current]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  if (route === 'fantasy' && fantasyData && fxAnimate) { animateCounts(); fxAnimate = false; }
   const video = document.querySelector('#camera');
   if (video) video.srcObject = camera;
 }
@@ -496,6 +709,15 @@ content.addEventListener('input', event => {
     const rows = [...content.querySelectorAll('.member-row')];
     rows.forEach(row => { row.hidden = !row.dataset.search.includes(query) || (committee !== '*' && row.dataset.committee !== committee); });
     document.querySelector('#no-members').hidden = rows.some(row => !row.hidden);
+    return;
+  }
+  if (event.target.id === 'fx-search') {
+    playerQuery = event.target.value;
+    const caret = event.target.selectionStart;
+    render();
+    const search = content.querySelector('#fx-search');
+    search?.focus();
+    search?.setSelectionRange(caret, caret);
     return;
   }
   if (event.target.id === 'history-search') {
@@ -615,6 +837,7 @@ async function photoAction(button) {
   if (step === 'remove' && confirm('Remove your profile photo?')) return perform(button, () => update('profile-photo', { remove: true }));
 }
 content.addEventListener('change', async event => {
+  if (event.target.id === 'fx-sort') { playerSort = event.target.value; return render(); }
   if (event.target.matches('form[data-action="directory-save"] select[name="role"]')) {
     const chips = event.target.form.querySelector('.access-chips');
     const labels = { members: 'Members & roles', posts: 'Feed & polls', points: 'Points', learning: 'Quiz & resources', activities: 'Activities' };
@@ -641,6 +864,7 @@ content.addEventListener('click', event => {
   if (button.dataset.signout !== undefined) return signOut(button);
   if (button.dataset.install !== undefined) return showWelcome(true);
   if (button.dataset.history) return showHistory(button);
+  if (button.dataset.fx) return fantasyAction(button);
   if (button.dataset.editResource) {
     editingResource = button.dataset.editResource;
     render();
@@ -701,6 +925,7 @@ content.addEventListener('submit', event => {
   const form = event.target;
   const fields = Object.fromEntries([...new FormData(form)].map(([key, value]) => [key, value.trim()]));
   const action = form.dataset.action;
+  if (action === 'fantasy-settings') ['budget', 'startPrice', 'priceStep', 'minPrice', 'maxPrice'].forEach(key => { fields[key] = String(Math.round(Number(fields[key]) * 10)); });
   if (action === 'custom-role') { fields.permissions = new FormData(form).getAll('permissions'); fields.committeeOnly = form.querySelector('[name="committeeOnly"]').checked; }
   if (form.dataset.id) fields.id = form.dataset.id;
   if (form.dataset.operation) fields.operation = form.dataset.operation;
@@ -712,6 +937,7 @@ content.addEventListener('submit', event => {
     if (pdf) fields.url = await uploadResourcePdf(pdf);
     await update(action, fields);
     if (action === 'publish') editingPost = '';
+    if (action === 'fantasy-settings') fantasyData = null;
     if (action === 'resource-update') editingResource = '';
   });
 });
@@ -763,6 +989,7 @@ document.addEventListener('focusout', () => requestAnimationFrame(updateKeyboard
     try {
       navigator.serviceWorker?.getRegistration().then(registration => registration?.update()).catch(() => {});
       if (!state) return location.reload();
+      if (fantasyData) { fantasyData = null; draft = null; }
       const fresh = await api('session');
       session = fresh;
       state = fresh.data;
