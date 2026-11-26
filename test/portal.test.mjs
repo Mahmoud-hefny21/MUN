@@ -218,7 +218,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.deepEqual(adminView.permissions, ['members', 'posts', 'points', 'learning', 'activities']);
     assert.ok(adminView.boardRoles.includes('President') && !adminView.boardRoles.includes('Admin'));
     assert.equal((await post('directory-save', { email: 'chief@example.test', name: 'Demote the Admin', role: 'Member' }, owner)).status, 403);
-    assert.equal((await post('directory-save', { email: 'pres2@miuegypt.edu.eg', name: 'Second President', role: 'President' }, owner)).status, 400);
+    assert.equal((await post('directory-save', { email: 'pres2@miuegypt.edu.eg', name: 'Second President', role: 'President' }, owner)).status, 200);
     assert.equal((await post('directory-save', { email: 'owner@example.test', name: 'owner', role: 'Co-President' }, chiefSession)).status, 200);
     assert.equal((await post('directory-save', { email: 'owner@example.test', name: 'owner', role: 'President' }, chiefSession)).status, 200);
     assert.equal((await (await get('/api/session', owner)).json()).data.profile.role, 'President');
@@ -232,11 +232,15 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('role-access', { role: 'Temp Role', permissions: ['posts', 'points'] }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Temp Role' }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Member' }, owner)).status, 400);
-    assert.equal((await post('role-delete', { role: 'President' }, owner)).status, 403);
+    assert.equal((await post('role-rename', { role: 'President', name: 'Secretary General' }, owner)).status, 200);
+    assert.equal((await post('role-access', { role: 'Assigned Admin', permissions: [] }, owner)).status, 400);
+    assert.equal((await post('role-delete', { role: 'Assigned Admin' }, owner)).status, 403);
+    assert.equal((await post('directory-save', { email: 'chief@example.test', name: 'X', role: 'Member' }, owner)).status, 403);
+    assert.equal((await post('directory-save', { email: 'sg2@miuegypt.edu.eg', name: 'Second SG', role: 'President' }, owner)).status, 200);
+    assert.equal((await post('publish', { type: 'Announcement', title: 'Photo', body: 'x', image: 'https://evil.example/x.jpg' }, owner)).status, 400);
     assert.equal((await post('role-rename', { role: 'High Board', name: 'Executive Board' }, owner)).status, 200);
     assert.equal((await (await get('/api/session', chiefSession)).json()).data.roleNames['High Board'], 'Executive Board');
     assert.equal((await post('role-rename', { role: 'Upper Board', name: 'Executive Board' }, owner)).status, 400);
-    assert.equal((await post('role-rename', { role: 'President', name: 'Boss' }, owner)).status, 400);
     assert.equal((await post('role-rename', { role: 'High Board', name: 'High Board' }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Vice President' }, owner)).status, 200);
     assert.equal((await post('directory-save', { email: 'x3@miuegypt.edu.eg', name: 'X', role: 'Vice President' }, chiefSession)).status, 400);
@@ -253,7 +257,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('member-email', { email: 'invited@gmail.com', role: 'Learning editor' }, owner)).status, 200);
     assert.equal((await post('member-email', { email: 'copresident@gmail.com', role: 'Co-President' }, owner)).status, 200);
     assert.equal((await post('member-invite-revoke', { email: 'copresident@gmail.com' }, owner)).status, 200);
-    assert.equal((await post('member-email', { email: 'president@gmail.com', role: 'President' }, owner)).status, 400);
+    assert.equal((await post('member-email', { email: 'president@gmail.com', role: 'President' }, owner)).status, 200);
     assert.equal((await post('directory-save', { email: 'Newbie@miuegypt.edu.eg', name: 'New Delegate', committee: '', role: 'Member', position: 'Delegate' }, owner)).status, 200);
     const directory = (await (await get('/api/session', owner)).json()).data.boardDirectory;
     assert.ok(directory.some(person => person.email === 'newbie@miuegypt.edu.eg' && person.position === 'Delegate' && !person.signed_in && person.active));

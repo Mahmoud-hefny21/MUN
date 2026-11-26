@@ -210,14 +210,15 @@ const roleRank = { Admin: 6, 'Assigned Admin': 5.5, President: 5, 'Co-President'
 const rank = role => roleRank[role] ?? 0;
 // Custom roles that manage members sit at Head level; other custom roles are like Members.
 const customRank = permissions => permissions.includes('members') ? 1 : 0;
-const actorRank = member => roleRank[member.role] ?? customRank(permissionsFor(member));
+// The Secretary General (President) manages everyone, other Secretaries General included, but never the Admin or Assigned Admins.
+const actorRank = member => member.role === 'President' ? 5.4 : roleRank[member.role] ?? customRank(permissionsFor(member));
 // Heads, and custom roles limited to a committee, act only inside their own committee.
 const scopeOf = member => member.role === 'Head' || member.custom_scoped ? member.committee || '\u0000' : null;
 const canManageAccount = (actor, account) => actorRank(actor) > rank(account.role) &&
   (!scopeOf(actor) || account.committee === scopeOf(actor));
 const customRolePermissions = role => Array.isArray(role.permissions) ? role.permissions : parse(role.permissions || '[]');
 // Grantable: below your rank, gives no permission you lack, and Heads can only add plain Members.
-const grantable = (role, permissions, actor) => role !== 'Admin' && !deletedRoles.has(role) && (role !== 'Assigned Admin' || actor.role === 'Admin') && (role !== 'President' || siteAdmins.includes(actor.role)) && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
+const grantable = (role, permissions, actor) => role !== 'Admin' && !deletedRoles.has(role) && (role !== 'Assigned Admin' || actor.role === 'Admin') && (role !== 'President' || [...siteAdmins, 'President'].includes(actor.role)) && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
   permissions.every(permission => permissionsFor(actor).includes(permission)) && (!scopeOf(actor) || role === 'Member');
 const assignableRole = async (role, actor) => {
   if (typeof role !== 'string' || !actor) return false;
@@ -490,6 +491,9 @@ async function mutate(path, member, body) {
       const committee = scopeOf(member) || clean(body.committee || '', 60, 'committee', true) || null;
       if (committee) check(await get('SELECT name FROM mun_committees WHERE name=?', committee), 'Committee not found.');
       const fields = [body.type, clean(body.title, 100, 'title'), clean(body.body, 1500, 'message'), json(choices)];
+      // Optional photo: only our own Cloudinary feed uploads; '' removes it, undefined keeps it.
+      const image = body.image === undefined ? undefined : String(body.image || '');
+      check(image === undefined || image === '' || (image.length <= 400 && image.startsWith('https://res.cloudinary.com/' + cloudinary.cloud + '/image/upload/') && image.includes('/mun/feed/')), 'Choose a valid photo.');
       if (id) {
         await transact(async () => {
           const current = await get('SELECT type, options, committee FROM mun_posts WHERE id=? FOR UPDATE', id);
@@ -497,11 +501,12 @@ async function mutate(path, member, body) {
           check(current.committee === committee, 'Published audience cannot be changed.', 409);
           check((current.type === body.type && current.options === fields[3]) || !await get('SELECT 1 FROM mun_votes WHERE post=? LIMIT 1', id), 'Poll choices and type are locked after the first vote.', 409);
           await run('UPDATE mun_posts SET type=?, title=?, body=?, options=? WHERE id=?', ...fields, id);
+          if (image !== undefined) await run('UPDATE mun_posts SET image=? WHERE id=?', image || null, id);
         });
       } else {
         const postId = token();
         await transact(async () => {
-          await run('INSERT INTO mun_posts(id,type,title,body,options,pinned,created,committee) VALUES (?,?,?,?,?,0,?,?)', postId, ...fields, Date.now(), committee);
+          await run('INSERT INTO mun_posts(id,type,title,body,options,pinned,created,committee,image) VALUES (?,?,?,?,?,0,?,?,?)', postId, ...fields, Date.now(), committee, image || null);
           await audit(member.id, 'post.publish', postId);
           await notify('post:' + postId, body.type, body.type + ': ' + fields[1], '#feed', null, committee, fields[2]);
         });
@@ -547,7 +552,9 @@ async function mutate(path, member, body) {
       await audit(member.id, 'role.access', role);
       return displayRole(role) + ' access saved.';
     }
-    check(!siteAdmins.includes(role) && (role !== 'President' || siteAdmins.includes(member.role)), 'Choose a role.');
+    check(!siteAdmins.includes(role), 'Choose a role.');
+    // Nobody can lock themselves out: your own role keeps 'Members & roles'.
+    check(role !== member.role || list.includes('members'), 'Keep Members on your own role, or you would lock yourself out.');
     const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
     const saved = row ? (typeof row.value === 'string' ? parse(row.value) : row.value) || {} : {};
     saved[role] = [...new Set(list)];
@@ -559,7 +566,7 @@ async function mutate(path, member, body) {
   if (path === 'role-rename') {
     check([...siteAdmins, 'President'].includes(member.role), 'Only the Admin or the President can rename roles.', 403);
     const role = String(body.role || '');
-    check(Object.hasOwn(defaultRolePermissions, role) && role !== 'Admin' && (!['President', 'Assigned Admin'].includes(role) || siteAdmins.includes(member.role)), 'Choose a role.');
+    check(Object.hasOwn(defaultRolePermissions, role) && role !== 'Admin' && (role !== 'Assigned Admin' || member.role === 'Admin'), 'Choose a role.');
     const name = clean(body.name, 40, 'role name');
     check(/^[\p{L}\p{N}][\p{L}\p{N} &'-]{0,39}$/u.test(name), 'Choose a different role name.');
     const taken = [...Object.keys(defaultRolePermissions).filter(item => item !== role).map(displayRole), ...(await all('SELECT name FROM mun_custom_roles')).map(item => item.name)];
@@ -584,8 +591,7 @@ async function mutate(path, member, body) {
     }
     if (Object.hasOwn(defaultRolePermissions, role)) {
       check(!permanentRoles.includes(role) && !deletedRoles.has(role), 'This role cannot be deleted.');
-      check(!['Co-President', 'Assigned Admin'].includes(role) || member.role === 'Admin', 'Only the Admin can delete this role.', 403);
-      check(role !== 'President' || siteAdmins.includes(member.role), 'Only the Admin can delete Secretary General.', 403);
+      check(role !== 'Assigned Admin' || member.role === 'Admin', 'Only the Admin can delete this role.', 403);
       await transact(async () => {
         deletedRoles.add(role);
         await run("INSERT INTO mun_settings(key, value) VALUES ('deleted-roles', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify([...deletedRoles]));
@@ -1036,6 +1042,14 @@ app.use(async (req, res) => {
       return respond(res, 200, { enabled: data.enabled });
     }
     // Signed upload ticket for a resource PDF: the browser uploads straight to Cloudinary (raw files, max 10 MB).
+    // Feed photos go straight from the browser to Cloudinary with a short-lived signed ticket.
+    if (path === '/api/post-image-upload') {
+      requirePermission(currentMember, 'posts');
+      check(photoUploadReady(), 'Photo uploads are not set up yet.', 503);
+      const params = { folder: 'mun/feed', timestamp: String(Math.floor(Date.now() / 1000)) };
+      const signature = createHash('sha1').update(Object.keys(params).sort().map(key => key + '=' + params[key]).join('&') + cloudinary.secret).digest('hex');
+      return respond(res, 200, { url: 'https://api.cloudinary.com/v1_1/' + encodeURIComponent(cloudinary.cloud) + '/image/upload', fields: { ...params, api_key: cloudinary.key, signature } });
+    }
     if (path === '/api/resource-upload') {
       requirePermission(currentMember, 'learning');
       check(photoUploadReady(), 'File uploads are not set up yet.', 503);

@@ -83,8 +83,11 @@ const timeAgo = value => {
   if (minutes < 10080) return Math.round(minutes / 1440) + 'd ago';
   return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', timeZone: 'Africa/Cairo' }).format(new Date(time));
 };
-const postCard = post => `<article class="card post${post.pinned ? ' pinned' : ''}"><header class="post-head"><span class="post-type">${icon(postIcons[post.type] || 'feed')}${esc(post.type)}</span>${post.pinned ? '<span class="post-pin">Pinned</span>' : ''}<time>${timeAgo(post.created)}</time></header>
-  <h3>${esc(post.title)}</h3><p class="content-line">${esc(post.body)}</p>${post.type === 'Poll' ? poll(post) : ''}</article>`;
+// Feed photos are served resized and in the best format for the device.
+const feedImage = (url, width) => url.replace('/image/upload/', `/image/upload/f_auto,q_auto,c_limit,w_${width}/`);
+const postMedia = post => post.image ? `<figure class="post-media"><img src="${esc(feedImage(post.image, 1200))}" srcset="${esc(feedImage(post.image, 640))} 640w, ${esc(feedImage(post.image, 1200))} 1200w" sizes="(max-width: 700px) 100vw, 720px" loading="lazy" decoding="async" alt=""></figure>` : '';
+const postCard = post => `<article class="card post${post.pinned ? ' pinned' : ''}${post.image ? ' has-media' : ''}"><header class="post-head"><span class="post-type">${icon(postIcons[post.type] || 'feed')}${esc(post.type)}</span>${post.pinned ? '<span class="post-pin">Pinned</span>' : ''}<time>${timeAgo(post.created)}</time></header>
+  ${postMedia(post)}<h3>${esc(post.title)}</h3><p class="content-line">${esc(post.body)}</p>${post.type === 'Poll' ? poll(post) : ''}</article>`;
 function feed() {
   const posts = postOrder().filter(post => feedFilter === 'All' || post.type === feedFilter);
   return heading('Club Feed', 'Official announcements, polls and challenges from the board.') +
@@ -640,6 +643,17 @@ document.addEventListener('click', event => {
   if (event.target.id === 'modal' || event.target.closest('[data-close-modal]')) closeModal();
 });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
+// Feed photo: show the picked photo right away.
+document.addEventListener('change', event => {
+  if (event.target.id !== 'post-image') return;
+  const file = event.target.files[0];
+  const preview = event.target.closest('.photo-drop').querySelector('.photo-preview');
+  if (!file) return;
+  if (preview.src.startsWith('blob:')) URL.revokeObjectURL(preview.src);
+  preview.src = URL.createObjectURL(file);
+  preview.hidden = false;
+  event.target.closest('.photo-drop').querySelector('.photo-hint').lastChild.textContent = ' Change photo';
+});
 // Feed post type: 'Other' reveals a field for the board's own type.
 document.addEventListener('change', event => {
   if (!event.target.matches('[data-post-type]')) return;
@@ -648,7 +662,7 @@ document.addEventListener('change', event => {
   field.querySelector('input').required = !field.hidden;
 });
 // Display names: the President role is called Secretary General in the club.
-const roleName = role => state?.roleNames?.[role] || role;
+const roleName = role => role === 'Assigned Admin' && state?.profile?.role !== 'Admin' ? (state?.roleNames?.Admin || 'Admin') : state?.roleNames?.[role] || role;
 function admin() {
   const intro = `<a class="back-link" href="#menu">${icon('chevron')} Back</a>` + heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
   if (!state.permissions.length) return intro + '<div class="card"><p>This workspace is available to authorized board members.</p></div>';
@@ -657,6 +671,7 @@ function admin() {
       ${(() => { const custom = editing && !types.includes(editing.type) ? editing.type : ''; return `<label>Type<select name="type" data-post-type>${types.map(type => `<option ${type === editing?.type ? 'selected' : ''}>${type}</option>`).join('')}<option value="Other" ${custom ? 'selected' : ''}>Other</option></select></label><label class="custom-type" ${custom ? '' : 'hidden'}>Your own type<input name="customType" maxlength="30" placeholder="e.g. Reminder, Social Event" value="${esc(custom)}"></label>`; })()}
       ${state.scope ? '<p>Audience: ' + esc(state.scope) + '</p>' : `<label>Audience<select name="committee"><option value="">Entire club</option>${state.committees.map(item => `<option ${item.name === editing?.committee ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label>`}
       <label>Title<input name="title" maxlength="100" required value="${esc(editing?.title)}"></label><label>Message<textarea name="body" maxlength="1500" required>${esc(editing?.body)}</textarea></label>
+      <div class="photo-field"><span class="access-title">Photo <small>(optional)</small></span>${state.photoUpload ? `<label class="photo-drop"><input type="file" id="post-image" accept="image/jpeg,image/png,image/webp"><img class="photo-preview" alt="" ${editing?.image ? `src="${esc(feedImage(editing.image, 640))}"` : 'hidden'}><span class="photo-hint">${icon('download')} ${editing?.image ? 'Change photo' : 'Add a photo'}</span></label>${editing?.image ? '<label class="choice"><input type="checkbox" name="removeImage">Remove photo</label>' : ''}` : '<p class="hint">Photo uploads are not set up yet.</p>'}</div>
       <label>Poll choices (one per line)<textarea name="options" maxlength="400">${esc(editing?.options.join('\n'))}</textarea></label><button class="primary">${editing ? 'Save changes' : 'Publish'}</button></form>${editing ? '<button data-cancel-edit>Cancel editing</button>' : ''}</section>
       <section class="card stack"><h2>Manage posts</h2>${postOrder().filter(post => post.manageable).map(post => `<div class="list-row"><span class="list-main"><strong>${esc(post.title)}</strong><small>${esc(post.type)}${post.pinned ? ' · Pinned' : ''} · ${timeAgo(post.created)}</small></span><span class="row-actions"><button data-edit="${esc(post.id)}">Edit</button><button data-pin="${esc(post.id)}">${post.pinned ? 'Unpin' : 'Pin'}</button><button class="danger" data-delete="${esc(post.id)}">Delete</button></span></div>`).join('') || '<p>No posts yet.</p>'}</section>` : '';
   // Fantasy tab: game control, season overview and rules (club-wide points managers).
@@ -750,7 +765,7 @@ function admin() {
     // Admin edits everyone but other Admins; the President edits Co-Presidents; nobody else edits full-access accounts.
     const me = state.profile.role;
     const admins = ['Admin', 'Assigned Admin'];
-    const locked = person.role === 'Admin' || (person.role === 'Assigned Admin' && me !== 'Admin') || (person.role === 'President' && !admins.includes(me)) || (person.role === 'Co-President' && ![...admins, 'President'].includes(me));
+    const locked = person.role === 'Admin' || (person.role === 'Assigned Admin' && me !== 'Admin') || (person.role === 'President' && ![...admins, 'President'].includes(me)) || (person.role === 'Co-President' && ![...admins, 'President'].includes(me));
     const detail = (label, value) => `<div><dt>${label}</dt><dd>${esc(value) || '—'}</dd></div>`;
     return `<details class="member-row" data-search="${esc((person.name + ' ' + person.email + ' ' + person.position).toLowerCase())}" data-committee="${esc(person.committee)}"><summary>${avatar(person)}<span class="list-main"><strong>${esc(shortName(person.name))}</strong><small>${esc(person.committee || 'No committee')}${person.position ? ' · ' + esc(person.position) : ''}</small></span><span class="dot ${tone}" title="${status}"></span><span class="badge${fullAccess(person.role) ? ' board' : ''}">${esc(fullAccess(person.role) ? 'Full access' : person.role)}</span>${icon('chevron')}</summary>
       <dl class="member-details">${detail('Full name', person.name)}${detail('Email', person.email)}${detail('Committee', person.committee)}${detail('Position', person.position)}${detail('Role', roleName(person.role))}${detail('Status', status)}</dl>
@@ -768,9 +783,9 @@ function admin() {
   const isCustom = role => (state.customRoles || []).some(item => item.name === role);
   const shortAccess = { members: 'Members', posts: 'Feed', points: 'Points', learning: 'Learning', activities: 'Activities' };
   const pill = (key, on) => `<label class="perm-pill" title="${accessLabels[key]}"><input type="checkbox" name="permissions" value="${key}" ${on ? 'checked' : ''}><span>${shortAccess[key]}</span></label>`;
-  const accessRows = Object.entries(state.boardRoleAccess || {}).filter(([role]) => !['Admin', 'Assigned Admin'].includes(role) && (role !== 'President' || ['Admin', 'Assigned Admin'].includes(state.profile.role)));
+  const accessRows = Object.entries(state.boardRoleAccess || {}).filter(([role]) => !['Admin', 'Assigned Admin'].includes(role));
   const accessCard = ['Admin', 'Assigned Admin', 'President'].includes(state.profile.role) ? `<section class="card stack roles-wide"><div class="card-title-row"><h2>Role access</h2><span class="hint">Tap to switch on or off, then Save. Applies right away to everyone with the role.</span></div>
-    <div class="role-matrix">${accessRows.map(([role, granted]) => `<form class="role-line" data-action="role-access"><input type="hidden" name="role" value="${esc(role)}"><span class="role-name">${esc(roleName(role))}${isCustom(role) ? '<small>Custom</small>' : `<button type="button" class="rename-role" data-rename-role="${esc(role)}">Rename</button>`}</span><span class="perm-pills">${Object.keys(shortAccess).map(key => pill(key, granted.includes(key))).join('')}</span><span class="role-actions"><button class="primary">Save</button>${isCustom(role) || !['Member', ...(['Admin', 'Assigned Admin'].includes(state.profile.role) ? [] : ['President']), ...(state.profile.role === 'Admin' ? [] : ['Co-President'])].includes(role) ? `<button type="button" class="danger" data-delete-role="${esc(role)}" aria-label="Delete ${esc(roleName(role))}">Delete</button>` : ''}</span></form>`).join('')}</div>${(state.deletedRoles || []).length ? `<p class="hint">Deleted roles: ${state.deletedRoles.map(role => `<button type="button" data-restore-role="${esc(role)}">Restore ${esc(roleName(role))}</button>`).join(' ')}</p>` : ''}</section>` : '';
+    <div class="role-matrix">${accessRows.map(([role, granted]) => `<form class="role-line" data-action="role-access"><input type="hidden" name="role" value="${esc(role)}"><span class="role-name">${esc(roleName(role))}${isCustom(role) ? '<small>Custom</small>' : `<button type="button" class="rename-role" data-rename-role="${esc(role)}">Rename</button>`}</span><span class="perm-pills">${Object.keys(shortAccess).map(key => pill(key, granted.includes(key))).join('')}</span><span class="role-actions"><button class="primary">Save</button>${isCustom(role) || role !== 'Member' ? `<button type="button" class="danger" data-delete-role="${esc(role)}" aria-label="Delete ${esc(roleName(role))}">Delete</button>` : ''}</span></form>`).join('')}</div>${(state.deletedRoles || []).length ? `<p class="hint">Deleted roles: ${state.deletedRoles.map(role => `<button type="button" data-restore-role="${esc(role)}">Restore ${esc(roleName(role))}</button>`).join(' ')}</p>` : ''}</section>` : '';
   const assignCard = `<section class="card stack"><h2>Assign a role by email</h2><p class="hint">Works before they sign in; the role applies on first Google sign-in.</p>
     <form data-action="member-email"><label>Google email<input type="email" name="email" maxlength="254" required placeholder="name1234567@miuegypt.edu.eg"></label>
     <div class="form-grid"><label>Role<select name="role">${state.boardRoles.map(role => `<option value="${esc(role)}">${esc(roleName(role))}</option>`).join('')}</select></label>
@@ -846,7 +861,7 @@ function render() {
   count.hidden = !state.unreadNotifications;
   count.textContent = state.unreadNotifications > 99 ? '99+' : state.unreadNotifications;
   document.querySelector('#inbox-link').setAttribute('aria-label', 'Inbox' + (state.unreadNotifications ? ', ' + state.unreadNotifications + ' unread' : ''));
-  document.querySelector('#crumb').innerHTML = '<span class="crumb-root">Club portal / </span>' + pages[route];
+  document.querySelector('#crumb').innerHTML = '<span class="crumb-root">Club portal / </span>' + (route === 'home' ? 'MIU-MUNAL' : pages[route]);
   document.querySelector('#account-name').textContent = shortName(state.profile.name);
   document.querySelector('#initials').outerHTML = avatar(state.profile).replace('class="avatar', 'id="initials" class="avatar');
   document.querySelectorAll('.sidebar a, .mobile-tabs a').forEach(link => {
@@ -969,6 +984,21 @@ async function uploadResourcePdf(file) {
     result = response.ok ? await response.json() : null;
   } catch { result = null; }
   if (!result?.secure_url?.startsWith('https://res.cloudinary.com/')) throw Error('The PDF could not be uploaded. Try again.');
+  return result.secure_url;
+}
+async function uploadPostImage(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw Error('Choose a JPG, PNG or WebP photo.');
+  if (file.size > 10e6) throw Error('Photos must be 10 MB or smaller.');
+  const ticket = await api('post-image-upload', {});
+  const form = new FormData();
+  Object.entries(ticket.fields).forEach(([key, value]) => form.append(key, value));
+  form.append('file', file);
+  let result;
+  try {
+    const response = await fetch(ticket.url, { method: 'POST', body: form });
+    result = response.ok ? await response.json() : null;
+  } catch { result = null; }
+  if (!result?.secure_url?.startsWith('https://res.cloudinary.com/')) throw Error('The photo could not be uploaded. Try again.');
   return result.secure_url;
 }
 async function update(action, fields) {
@@ -1143,6 +1173,12 @@ content.addEventListener('submit', event => {
     if (action === 'activity') fields.starts = new Date(fields.starts).toISOString();
     const pdf = form.querySelector('#resource-file')?.files[0];
     if (pdf) fields.url = await uploadResourcePdf(pdf);
+    if (action === 'publish') {
+      const photo = form.querySelector('#post-image')?.files[0];
+      if (photo) fields.image = await uploadPostImage(photo);
+      else if (fields.removeImage) fields.image = '';
+      delete fields.removeImage;
+    }
     await update(action, fields);
     if (action === 'publish') editingPost = '';
     // Reload Fantasy before the page redraws, so the confirmation stays on screen.
