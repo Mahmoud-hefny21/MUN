@@ -7,8 +7,8 @@
 export const defaultSettings = {
   enabled: true,
   seasonStart: '',        // Monday of round 1; set on first use
-  budget: 320,            // 32.0m
-  squadSize: 5,
+  budget: 700,            // 70.0m (11 members at the 6.0m start price, with room to trade up)
+  squadSize: 11,
   captainMultiplier: 2,
   freeTransfers: 1,
   transferPenalty: 4,
@@ -223,7 +223,6 @@ export function createFantasy({ run, get, all, transact, today }) {
     if (!config.enabled) fail('Fantasy is paused by the board.', 403);
     const chosen = Array.isArray(input.players) ? [...new Set(input.players.map(String))] : [];
     if (chosen.length !== config.squadSize) fail('Pick exactly ' + config.squadSize + ' members.');
-    if (chosen.includes(member.id)) fail('You cannot pick yourself.');
     const captain = String(input.captain || '');
     if (!chosen.includes(captain)) fail('Choose a captain from your squad.');
     const current = roundOf(today());

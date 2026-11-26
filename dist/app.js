@@ -149,11 +149,11 @@ function squadTab() {
   const squad = shownSquad();
   const size = f.settings.squadSize;
   // Players are members who have signed in; until enough have joined, a full squad is not possible.
-  const available = f.players.filter(player => player.id !== state.profile.id).length;
+  const available = f.players.length;
   if (!squad && !draft) {
     return `<section class="card fx-empty">${icon('trophy')}<h2>Build your squad</h2><p>Pick ${size} members within ${credits(f.settings.budget)}. Their real club points become your fantasy points from next round; your captain scores ×${f.settings.captainMultiplier}.</p>
       ${!f.settings.enabled ? '<p class="notice">Fantasy is paused by the board.</p>'
-        : available < size ? `<p class="notice">Fantasy opens when ${size} other members have joined the portal (${available} so far). Invite your committee to sign in!</p>`
+        : available < size ? `<p class="notice">Fantasy opens when ${size} members have joined the portal (${available} so far). Invite your committee to sign in!</p>`
         : '<button class="primary" data-fx="edit">Pick your squad</button>'}</section>`;
   }
   const playing = !draft && !f.upcoming && Boolean(f.squad);
@@ -163,10 +163,9 @@ function squadTab() {
   const hit = Math.max(0, transfers - f.settings.freeTransfers) * f.settings.transferPenalty;
   const seats = ids.map(id => seat(id, squad, playing));
   const open = draft ? Array.from({ length: Math.max(0, size - ids.length) }, () => '<div class="fx-seat empty"><span class="avatar lg">+</span><strong>Open seat</strong><small>Add from the list</small></div>') : [];
-  const all = [...seats, ...open];
   const captainIndex = ids.indexOf(squad.captain);
-  const middle = Math.min(1, all.length - 1);
-  if (captainIndex >= 0 && captainIndex !== middle && !draft) all.splice(middle, 0, all.splice(captainIndex, 1)[0]);
+  const captainSeat = captainIndex >= 0 && !draft ? seats.splice(captainIndex, 1) : [];
+  const all = [...captainSeat, ...(captainSeat.length ? ['<span class="fx-row-break" aria-hidden="true"></span>'] : []), ...seats, ...open];
   return `<section class="card fx-pitch-card">
       <div class="section-head"><h2>${draft ? 'Edit squad' : playing ? 'Playing this round' : 'Your squad for Round ' + (f.round.number + 1)}</h2>
         ${draft ? '' : f.settings.enabled ? '<button data-fx="edit">Transfers</button>' : ''}</div>
@@ -184,7 +183,7 @@ function playersTab(picking = false) {
   const f = fantasyData;
   const q = playerQuery.trim().toLowerCase();
   const chosen = draft?.players || [];
-  const list = f.players.filter(player => player.id !== state.profile.id && (!q || player.name.toLowerCase().includes(q) || (player.committee || '').toLowerCase().includes(q)))
+  const list = f.players.filter(player => (!q || player.name.toLowerCase().includes(q) || (player.committee || '').toLowerCase().includes(q)))
     .sort((a, b) => (b[playerSort] - a[playerSort]) || a.name.localeCompare(b.name));
   const sorts = [['total', 'Total'], ['form', 'Form'], ['roundPoints', 'Round'], ['price', 'Price'], ['selectedBy', 'Picked %']];
   return `<section class="card stack">
@@ -226,7 +225,7 @@ function leaguesTab() {
 function rulesCard() {
   const s = fantasyData.settings;
   return `<details class="card fx-rules"><summary>${icon('book')} How MUN Fantasy works</summary><ul>
-    <li>Pick ${s.squadSize} members (not yourself) within ${credits(s.budget)}. Choose a captain: their points count ×${s.captainMultiplier}.</li>
+    <li>Pick ${s.squadSize} members (you can include yourself) within ${credits(s.budget)}. Choose a captain: their points count ×${s.captainMultiplier}.</li>
     <li>Your members score the real club points they earn each week (quizzes, activities, awards). A round runs Monday to Sunday, Cairo time.</li>
     <li>Squad changes apply from the next round. ${s.freeTransfers} free transfer${s.freeTransfers === 1 ? '' : 's'} per round; each extra costs ${s.transferPenalty} points.</li>
     <li>Prices update every round: ${s.riseThreshold}+ points last round raises a member by ${credits(s.priceStep)}; ${s.fallThreshold} or fewer lowers them (${credits(s.minPrice)} to ${credits(s.maxPrice)}).</li>
@@ -261,7 +260,7 @@ function playerCard(id) {
   body.classList.remove('history-box');
   body.innerHTML = `<div class="fx-card">${avatar(player, 'xl')}<p>${esc(player.committee || 'No committee')}</p>${priceTag(player)}</div>
     <div class="fx-card-stats">${[['Total', player.total], ['This round', player.roundPoints], ['Last round', player.lastRound], ['Form', player.form], ['Picked by', player.selectedBy + '%']].map(([label, value]) => `<div><b>${value}</b><small>${label}</small></div>`).join('')}</div>
-    ${draft && player.id !== state.profile.id ? (draft.players.includes(player.id) ? `<button class="danger" data-fx="remove" data-id="${esc(player.id)}" data-close-modal>Remove from squad</button>` : `<button class="primary" data-fx="add" data-id="${esc(player.id)}" data-close-modal>Add to squad</button>`) : ''}`;
+    ${draft ? (draft.players.includes(player.id) ? `<button class="danger" data-fx="remove" data-id="${esc(player.id)}" data-close-modal>Remove from squad</button>` : `<button class="primary" data-fx="add" data-id="${esc(player.id)}" data-close-modal>Add to squad</button>`) : ''}`;
 }
 // Count-up for headline numbers (skipped when the user prefers reduced motion).
 function animateCounts() {

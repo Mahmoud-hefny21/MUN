@@ -30,7 +30,9 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
 
   // Squad rules.
   const squad = ['b', 'c', 'd', 'e', 'f'];
-  await assert.rejects(fantasy.saveSquad(me, { players: ['a', 'b', 'c', 'd', 'e'], captain: 'b' }), /yourself/);
+  assert.equal(view.settings.squadSize, 11);
+  assert.equal(view.settings.budget, 700);
+  await fantasy.saveSettings({ squadSize: '5', budget: '320' });
   await assert.rejects(fantasy.saveSquad(me, { players: ['b', 'c'], captain: 'b' }), /exactly 5/);
   await assert.rejects(fantasy.saveSquad(me, { players: squad, captain: 'g' }), /captain/);
   await assert.rejects(fantasy.saveSquad(me, { players: ['b', 'c', 'd', 'e', 'zz'], captain: 'b' }), /active club members/);

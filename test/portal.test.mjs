@@ -288,7 +288,8 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await (await get('/api/session', owner)).json()).data.fantasySettings.squadSize, 2);
     const ownerId = (await (await get('/api/session', owner)).json()).data.profile.id;
     const picks = fantasyView.players.filter(player => player.id !== ownerId).slice(0, 2).map(player => player.id);
-    assert.equal((await post('fantasy-squad', { players: [ownerId, picks[0]], captain: picks[0] }, owner)).status, 400);
+    // Managers may include themselves.
+    assert.equal((await post('fantasy-squad', { players: [ownerId, picks[0]], captain: ownerId }, owner)).status, 200);
     const savedSquad = await (await post('fantasy-squad', { players: picks, captain: picks[1] }, owner)).json();
     assert.equal(savedSquad.message, 'Squad saved for next round.');
     assert.deepEqual([...savedSquad.data.upcoming.players].sort(), [...picks].sort());
