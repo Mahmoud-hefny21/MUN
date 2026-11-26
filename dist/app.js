@@ -1045,7 +1045,7 @@ content.addEventListener('click', event => {
   if (button.dataset.history) return showHistory(button);
   if (button.dataset.restoreRole) return perform(button, () => update('role-delete', { role: button.dataset.restoreRole, restore: 'true' }));
   if (button.dataset.renameRole) {
-    const name = prompt(`New name for "${roleName(button.dataset.renameRole)}"`, roleName(button.dataset.renameRole));
+    const name = window.prompt(`New name for "${roleName(button.dataset.renameRole)}"`, roleName(button.dataset.renameRole));
     if (!name || !name.trim() || name.trim() === roleName(button.dataset.renameRole)) return;
     return perform(button, () => update('role-rename', { role: button.dataset.renameRole, name: name.trim() }));
   }
