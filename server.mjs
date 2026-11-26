@@ -165,6 +165,8 @@ async function memberFor(req) {
   return member?.active ? member : null;
 }
 const rolePermissions = {
+  // Admin: the site owner, open access to everything, above the President.
+  Admin: ['members', 'posts', 'points', 'learning', 'activities'],
   President: ['members', 'posts', 'points', 'learning', 'activities'],
   'Co-President': ['members', 'posts', 'points', 'learning', 'activities'],
   'Upper Board': ['members', 'posts', 'points', 'learning', 'activities'],
@@ -177,9 +179,9 @@ const rolePermissions = {
 };
 const permissionsFor = member => (member.role === 'Head' || member.custom_scoped) && !member.committee ? [] : (Object.hasOwn(rolePermissions, member.role) ? rolePermissions[member.role] : member.custom_permissions || []);
 // Full-access roles are granted only by an administrator (provision scripts), never from the board workspace.
-const protectedRoles = ['President', 'Co-President'];
+const protectedRoles = ['Admin', 'President', 'Co-President'];
 // Role hierarchy: you can only grant roles below your own, and only edit accounts below your own.
-const roleRank = { President: 5, 'Co-President': 4, 'Upper Board': 3, 'High Board': 2, 'Vice President': 2, Head: 1 };
+const roleRank = { Admin: 6, President: 5, 'Co-President': 4, 'Upper Board': 3, 'High Board': 2, 'Vice President': 2, Head: 1 };
 const rank = role => roleRank[role] ?? 0;
 // Custom roles that manage members sit at Head level; other custom roles are like Members.
 const customRank = permissions => permissions.includes('members') ? 1 : 0;
@@ -190,7 +192,7 @@ const canManageAccount = (actor, account) => actorRank(actor) > rank(account.rol
   (!scopeOf(actor) || account.committee === scopeOf(actor));
 const customRolePermissions = role => Array.isArray(role.permissions) ? role.permissions : parse(role.permissions || '[]');
 // Grantable: below your rank, gives no permission you lack, and Heads can only add plain Members.
-const grantable = (role, permissions, actor) => role !== 'President' && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
+const grantable = (role, permissions, actor) => role !== 'Admin' && (role !== 'President' || actor.role === 'Admin') && (roleRank[role] ?? customRank(permissions)) < actorRank(actor) &&
   permissions.every(permission => permissionsFor(actor).includes(permission)) && (!scopeOf(actor) || role === 'Member');
 const assignableRole = async (role, actor) => {
   if (typeof role !== 'string' || !actor) return false;
@@ -974,6 +976,13 @@ function startServer() {
 }
 if (!env.VERCEL && process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) startServer();
 export { app, startServer };
+// Makes an already registered account the site Admin (operator action, never from the app).
+export async function provisionAdmin(subject) {
+  return transact(async () => {
+    check((await run("UPDATE mun_members SET role='Admin', active=1 WHERE id=?", subject)).changes === 1, 'Google account has not registered.');
+    await audit(subject, 'admin.provision', subject);
+  });
+}
 export async function provisionPresident(subject) {
   return transact(async () => {
     await get('SELECT pg_advisory_xact_lock(1282370242)');
@@ -992,7 +1001,7 @@ export async function importRoster(rows) {
     committee: clean(row.committee).slice(0, 60), position: clean(row.position).slice(0, 60)
   })).filter(row => z.email().safeParse(row.email).success && row.name);
   for (const row of entries) {
-    check(Object.hasOwn(rolePermissions, row.role) && row.role !== 'President', 'Unknown roster role: ' + row.role);
+    check(Object.hasOwn(rolePermissions, row.role) && !['Admin', 'President'].includes(row.role), 'Unknown roster role: ' + row.role);
   }
   return transact(async () => {
     for (const name of new Set(entries.map(row => row.committee).filter(Boolean))) {
@@ -1005,7 +1014,7 @@ export async function importRoster(rows) {
         ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, committee=excluded.committee, position=excluded.position, updated_at=now()`,
         row.email, row.name, row.role, row.committee, row.position);
       updated += (await run(`UPDATE mun_members SET name=?, role=?, committee=?, position=?, active=1
-        WHERE lower(email)=? AND role<>'President'`, row.name, row.role, row.committee, row.position, row.email)).changes;
+        WHERE lower(email)=? AND role NOT IN ('Admin', 'President')`, row.name, row.role, row.committee, row.position, row.email)).changes;
     }
     return { roster: entries.length, updatedMembers: updated };
   });

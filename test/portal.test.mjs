@@ -57,7 +57,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     const token = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'test' })).toString('base64url') + '.' + payload;
     return Response.json({ id_token: token + '.' + sign('RSA-SHA256', Buffer.from(token), privateKey).toString('base64url') });
   };
-  const { startServer, provisionPresident, importRoster } = await import('../server.mjs');
+  const { startServer, provisionPresident, provisionAdmin, importRoster } = await import('../server.mjs');
   const server = startServer();
   if (!server.listening) await once(server, 'listening');
   const base = 'http://127.0.0.1:' + server.address().port;
@@ -209,6 +209,20 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.ok((await (await get('/api/session', leadSession)).json()).data.boardDirectory.some(person => person.email === 'lead1@miuegypt.edu.eg' && person.committee === 'Press and Media'));
     assert.equal((await post('directory-remove', { email: 'lead1@miuegypt.edu.eg' }, leadSession)).status, 200);
     assert.equal((await post('directory-save', { email: 'member2@gmail.com', name: 'Roster Member', role: 'Member', committee: 'Press and Media' }, owner)).status, 200);
+    // Admin sits above the President: open access, can manage and grant President; nobody grants Admin from the app.
+    await login('chief');
+    await provisionAdmin('chief');
+    const chiefSession = await login('chief');
+    const adminView = (await (await get('/api/session', chiefSession)).json()).data;
+    assert.equal(adminView.profile.role, 'Admin');
+    assert.deepEqual(adminView.permissions, ['members', 'posts', 'points', 'learning', 'activities']);
+    assert.ok(adminView.boardRoles.includes('President') && !adminView.boardRoles.includes('Admin'));
+    assert.equal((await post('directory-save', { email: 'chief@example.test', name: 'Demote the Admin', role: 'Member' }, owner)).status, 403);
+    assert.equal((await post('directory-save', { email: 'pres2@miuegypt.edu.eg', name: 'Second President', role: 'President' }, owner)).status, 400);
+    assert.equal((await post('directory-save', { email: 'owner@example.test', name: 'owner', role: 'Co-President' }, chiefSession)).status, 200);
+    assert.equal((await post('directory-save', { email: 'owner@example.test', name: 'owner', role: 'President' }, chiefSession)).status, 200);
+    assert.equal((await (await get('/api/session', owner)).json()).data.profile.role, 'President');
+    assert.equal((await post('directory-save', { email: 'x2@miuegypt.edu.eg', name: 'X', role: 'Admin' }, chiefSession)).status, 400);
     assert.equal((await post('custom-role', { name: 'Learning editor', permissions: ['learning'] }, owner)).status, 200);
     assert.equal((await post('member-email', { email: 'delegate@example.test', role: 'Learning editor', committee: 'Security Council' }, owner)).status, 200);
     assert.equal((await (await get('/api/session', member)).json()).data.profile.role, 'Learning editor');
