@@ -109,11 +109,27 @@ let playerCategory = 'all';
 const categoryLabel = { board: 'Board', head: 'Head', member: 'Member' };
 const credits = value => (value / 10).toFixed(1) + 'm';
 const firstName = name => shortName(name).split(' ')[0];
+let fantasySyncedAt = 0;
+// Quiet refresh: keeps standings and prices in sync without interrupting edits, typing or popups.
+async function syncFantasy() {
+  if (!fantasyData || fantasyLoading || draft || busy || document.hidden || location.hash.slice(1).split('/')[0] !== 'fantasy') return;
+  try {
+    const fresh = await api('fantasy', {});
+    if (draft) return;
+    fantasyData = fresh;
+    fantasySyncedAt = Date.now();
+    const typing = document.activeElement?.matches('#content input, #content select, #content textarea');
+    if (!typing && !document.querySelector('#modal') && location.hash.slice(1).split('/')[0] === 'fantasy') render();
+  } catch {}
+}
+setInterval(syncFantasy, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncFantasy(); });
 async function loadFantasy(force = false) {
   if (fantasyLoading || (fantasyData && !force)) return;
   fantasyLoading = true;
   try {
     fantasyData = await api('fantasy', {});
+    fantasySyncedAt = Date.now();
     fxAnimate = true;
   } catch (error) {
     notice = error.message;
@@ -188,7 +204,12 @@ function squadTab() {
   // Players are members who have signed in; until enough have joined, a full squad is not possible.
   const available = f.players.length;
   if (!squad && !draft) {
-    return `<section class="card fx-empty">${icon('trophy')}<h2>Build your squad</h2><p>Pick ${size} members within ${credits(f.settings.budget)}. Their real club points become your fantasy points from next round; your captain scores ×${f.settings.captainMultiplier}.</p>
+    return `<section class="card fx-empty">${icon('trophy')}<h2>Play MUN Fantasy in 3 steps</h2>
+      <ol class="fx-steps">
+        <li><b>1</b><span><strong>Pick ${size} members</strong><small>Any club members, you included, within ${credits(f.settings.budget)}.</small></span></li>
+        <li><b>2</b><span><strong>Choose a captain</strong><small>Their points count ×${f.settings.captainMultiplier}.</small></span></li>
+        <li><b>3</b><span><strong>Score every week</strong><small>Your team earns the real points your members get: quizzes, activities and awards.</small></span></li>
+      </ol>
       ${!f.settings.enabled ? '<p class="notice">Fantasy is paused by the board.</p>'
         : available < size ? `<p class="notice">Fantasy opens when ${size} members have joined the portal (${available} so far). Invite your committee to sign in!</p>`
         : '<button class="primary" data-fx="edit">Pick your squad</button>'}</section>`;
@@ -206,6 +227,11 @@ function squadTab() {
   return `<section class="card fx-pitch-card">
       <div class="section-head"><h2>${draft ? 'Edit squad' : playing ? 'Playing this round' : 'Your squad for Round ' + (f.round.number + 1)}</h2>
         ${draft ? '' : f.settings.enabled ? '<button data-fx="edit">Transfers</button>' : ''}</div>
+      ${draft
+        ? `<div class="fx-statusbar">${icon('quiz')}<span>Picked <b>${ids.length} of ${size}</b> · Captain <b>${squad.captain ? esc(firstName(playerById(squad.captain)?.name || '')) : 'not chosen'}</b> · <b>${credits(f.settings.budget - cost)}</b> left</span></div>`
+        : playing
+          ? `<div class="fx-statusbar">${icon('chart')}<span>Playing <b>Round ${f.round.number}</b> until ${dayLabel(f.round.end)}. Make transfers before <b>${dayLabel(f.round.next)}</b> to change Round ${f.round.number + 1}.</span></div>`
+          : `<div class="fx-statusbar saved">${icon('quiz')}<span>Saved for <b>Round ${f.round.number + 1}</b>, starting ${dayLabel(f.round.next)}.${f.squad ? ` Your current team still plays Round ${f.round.number} (<b>${f.me?.round ?? 0} pts</b> so far).` : ' You can still change it until then.'}</span></div>`}
       <div class="fx-chamber">${all.join('')}</div>
       <div class="fx-meter"><span>Squad cost <b>${credits(cost)}</b> of ${credits(f.settings.budget)}</span><span class="${cost > f.settings.budget ? 'over' : ''}">Bank <b>${credits(f.settings.budget - cost)}</b></span></div>
       ${draft ? makeupLine(ids) : ''}
@@ -228,6 +254,7 @@ function playersTab(picking = false) {
     <div class="section-head"><h2>${picking ? 'Add members' : 'Members'}</h2><span class="count">${list.length}</span></div>
     <div class="directory-tools"><input id="fx-search" type="search" placeholder="Search name or committee" aria-label="Search members" value="${esc(playerQuery)}"><select id="fx-sort" aria-label="Sort members">${sorts.map(([key, label]) => `<option value="${key}" ${key === playerSort ? 'selected' : ''}>Sort: ${label}</option>`).join('')}</select></div>
     <div class="filter-row fx-categories">${[['all', 'All'], ['board', 'Board'], ['head', 'Heads'], ['member', 'Members']].map(([id, label]) => `<button data-fx="category" data-id="${id}" class="${playerCategory === id ? 'selected' : ''}">${label}</button>`).join('')}</div>
+    <div class="fx-list-head" aria-hidden="true"><span>Member</span><span class="fx-list-cols"><span>Pts</span><span>Form</span><span>Picked</span></span><span>Price</span>${picking ? '<span class="fx-list-add"></span>' : ''}</div>
     <div class="fx-list">${list.slice(0, 60).map(player => {
       const inSquad = chosen.includes(player.id);
       const full = chosen.length >= f.settings.squadSize;
@@ -273,6 +300,7 @@ function rulesCard() {
   </ul></details>`;
 }
 function fantasy() {
+  if (fantasyData && !draft && Date.now() - fantasySyncedAt > 30000) setTimeout(syncFantasy);
   if (!fantasyData) {
     loadFantasy();
     return heading('Fantasy', 'Build a squad of club members and compete every round.') + '<div class="card fx-loading"><span></span><span></span><span></span></div>';
@@ -284,7 +312,7 @@ function fantasy() {
     : fantasyTab === 'points' ? stats() + `<div class="grid"><section class="card"><h2>Member standings</h2><div class="actions">${[['points', 'Global'], ['week', 'Weekly'], ['month', 'Monthly']].map(([id, label]) => `<button data-scope="${id}" aria-pressed="${scope === id}" class="${scope === id ? 'selected' : ''}">${label}</button>`).join('')}</div>${ranking(scope)}</section><section class="card"><div class="section-head"><h2>Points history</h2></div>${pointHistory()}</section></div>`
     : squadTab();
   return `<div class="fx-page${fxAnimate ? ' fx-enter' : ''}"><div class="fx-hero">
-      <div><span class="eyebrow">MUN Fantasy · Round ${f.round.number}</span><h1>Fantasy</h1><p>${dayLabel(f.round.start)} – ${dayLabel(f.round.end)} · Next round in ${daysUntil(f.round.next, f.round.today)} day${daysUntil(f.round.next, f.round.today) === 1 ? '' : 's'}</p></div>
+      <div><span class="eyebrow">MUN Fantasy · Round ${f.round.number}</span><h1>Fantasy</h1><p>${dayLabel(f.round.start)} – ${dayLabel(f.round.end)} · Next round in ${daysUntil(f.round.next, f.round.today)} day${daysUntil(f.round.next, f.round.today) === 1 ? '' : 's'}</p><small class="fx-synced">${icon('refresh')} Updated ${new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(fantasySyncedAt || Date.now())}</small></div>
       ${f.me ? `<div class="fx-scores">
         <div><b data-count="${f.me.round}">${f.me.round}</b><small>Round</small></div>
         <div><b data-count="${f.me.total}">${f.me.total}</b><small>Total</small></div>
@@ -853,6 +881,7 @@ async function uploadResourcePdf(file) {
   return result.secure_url;
 }
 async function update(action, fields) {
+  fantasySyncedAt = 0;
   const result = await api(action, fields);
   state = result.data;
   notice = result.message;
