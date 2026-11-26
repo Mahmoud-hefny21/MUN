@@ -562,7 +562,7 @@ function showWelcome(force = false) {
     document.body.append(sheet);
   }
   sheet.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
-    <img src="/logo.jpg" width="64" height="64" alt=""><h2 id="welcome-title">Welcome to MIU MUN</h2><p>Get the full app experience in two taps.</p>
+    <img src="/logo-256.jpg" width="64" height="64" alt=""><h2 id="welcome-title">Welcome to MIU MUN</h2><p>Get the full app experience in two taps.</p>
     <div class="step"><span class="icon">${icon('download')}</span><div><strong>Add to your Home Screen</strong><small>Open the portal like an app, full screen.</small>${installStep()}</div></div>
     <div class="step"><span class="icon">${icon('bell')}</span><div><strong>Get notified</strong><small>New posts, quizzes, points and events.</small>${pushStep()}</div></div>
     <p class="notice" id="welcome-status" role="status" hidden></p>
@@ -789,6 +789,7 @@ function notifications() {
 }
 const views = { home, feed, fantasy, assistant, resources, quiz, profile, admin, notifications, menu };
 
+let lastRoute = '';
 function render() {
   document.body.classList.toggle('signed-out', !state);
   let requested = location.hash.slice(1).split('/')[0];
@@ -804,7 +805,7 @@ function render() {
     const google = '<svg class="g-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.2l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.8c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>';
     const perks = [['feed', 'Club feed, polls and events'], ['trophy', 'Fantasy points and the daily quiz'], ['spark', 'AI assistant for debate and research']];
     content.innerHTML = `<section class="login-page"><div class="login-card">
-      <img class="login-logo" src="logo.jpg" width="120" height="120" alt="MIU Model United Nations and Arab League XIX emblem">
+      <img class="login-logo" src="/logo-256.jpg" width="120" height="120" alt="MIU Model United Nations and Arab League XIX emblem">
       <span class="eyebrow">MIU-MUNAL</span><h1>Member portal</h1>
       <p class="login-lead">Model United Nations &amp; Model Arab League at Misr International University. Train, debate and compete with the club.</p>
       ${pending ? '<div class="login-status" role="status"><strong>You’re signed in — almost there.</strong><span>The board needs to approve your membership. Once they do, sign in again to enter.</span></div>' : ''}
@@ -829,6 +830,7 @@ function render() {
     if (link.hash === '#' + activeRoute && !link.classList.contains('brand')) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
+  if (route !== lastRoute) { content.classList.remove('page-in'); void content.offsetWidth; content.classList.add('page-in'); lastRoute = route; }
   content.innerHTML = views[route]() + (notice && route !== 'admin' ? `<div class="notice" role="status">${esc(notice)}</div>` : '');
   notice = '';
   content.querySelectorAll('[data-pct]').forEach(bar => { bar.style.width = bar.dataset.pct + '%'; });
@@ -873,6 +875,7 @@ async function api(action, fields) {
   });
   const payload = await response.json();
   if (response.status === 401 && action !== 'session') {
+    clearCache();
     state = undefined;
     session = { googleReady: true };
     render();
@@ -880,18 +883,31 @@ async function api(action, fields) {
   if (!response.ok) throw Error(payload.error || 'Unable to complete this request.');
   return payload;
 }
+// The last signed-in view is kept on this device so the app opens instantly; it is replaced by fresh data
+// a moment later and removed on sign-out.
+const cacheKey = 'mun-session-v1';
+const saveCache = () => { try { if (state) localStorage.setItem(cacheKey, JSON.stringify(state)); } catch {} };
+const clearCache = () => { try { localStorage.removeItem(cacheKey); } catch {} };
+const quietToRender = () => !busy && !document.querySelector('#modal') && !document.activeElement?.matches('#content input, #content textarea, #content select');
 async function loadSession() {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch {}
+  if (cached) { state = cached; session = { signedIn: true }; render(); }
   try {
     session = await api('session');
     state = session.data;
+    if (state) saveCache(); else clearCache();
   } catch {
-    session = { message: 'Start the portal server to connect to Google sign-in.' };
+    if (!cached) session = { message: 'Start the portal server to connect to Google sign-in.' };
   }
-  render();
+  // Fresh data replaces the cached view, unless the member is already typing or busy.
+  if (!cached || !state || quietToRender()) render();
   // pwa.js loads after this file, so wire install updates once the session is in.
   munInstall.onChange(() => { if (document.querySelector('#welcome')) showWelcome(true); });
   showWelcome();
-  autoPush();
+  // Push setup and Fantasy data load after the page settles, so they never compete with the first paint.
+  setTimeout(autoPush, 3000);
+  if (state) (window.requestIdleCallback || (callback => setTimeout(callback, 2000)))(() => loadFantasy(), { timeout: 5000 });
 }
 async function perform(control, operation) {
   if (busy) return;
@@ -935,12 +951,14 @@ async function update(action, fields) {
   fantasySyncedAt = 0;
   const result = await api(action, fields);
   state = result.data;
+  saveCache();
   notice = result.message;
 }
 const signOut = control => perform(control, async () => {
   stopCamera();
   try { await munPush.logout(); } catch {}
   await api('logout', {});
+  clearCache();
   state = undefined;
   session = { googleReady: true };
   conversation = [];

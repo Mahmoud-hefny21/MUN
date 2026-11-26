@@ -811,6 +811,7 @@ const assets = {
   '/offline.html': [new URL('./dist/offline.html', import.meta.url), 'text/html; charset=utf-8'],
   '/manifest.webmanifest': [new URL('./dist/manifest.webmanifest', import.meta.url), 'application/manifest+json'],
   '/logo.jpg': [new URL('./dist/logo.jpg', import.meta.url), 'image/jpeg'],
+  '/logo-256.jpg': [new URL('./dist/logo-256.jpg', import.meta.url), 'image/jpeg'],
   '/icons/icon-192.png': [new URL('./dist/icons/icon-192.png', import.meta.url), 'image/png'],
   '/icons/icon-512.png': [new URL('./dist/icons/icon-512.png', import.meta.url), 'image/png'],
   '/icons/maskable.png': [new URL('./dist/icons/maskable.png', import.meta.url), 'image/png'],

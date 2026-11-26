@@ -1,5 +1,5 @@
-const cacheName = 'mun-public-static-v9';
-const publicAssets = ['/offline.html', '/style.css', '/logo.jpg', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable.png', '/icons/apple.png'];
+const cacheName = 'mun-public-static-v10';
+const publicAssets = ['/offline.html', '/style.css', '/logo.jpg', '/logo-256.jpg', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable.png', '/icons/apple.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(publicAssets)));

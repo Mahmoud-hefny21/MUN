@@ -119,6 +119,15 @@ body.footer-in-view .ai-fab { opacity: 0; transform: scale(.8); pointer-events: 
 .ptr .i { width: 20px; height: 20px; }
 .ptr.spinning .i { animation: ptr-spin .8s linear infinite; }
 
+/* Startup splash and page transitions */
+.boot { min-height: 60vh; display: grid; place-items: center; align-content: center; gap: 18px; }
+.boot img { border-radius: 50%; border: 1px solid var(--gold-line); animation: boot-breathe 1.6s ease-in-out infinite; }
+.boot span { width: 120px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--gold), transparent); background-size: 200% 100%; animation: boot-line 1.2s linear infinite; }
+@keyframes boot-breathe { 50% { opacity: .65; transform: scale(.97); } }
+@keyframes boot-line { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.page-in > * { animation: page-in .22s ease both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
 /* ---------- Shared content blocks ---------- */
 .page-heading { margin-bottom: 23px; }
 .page-heading h1 { font-size: clamp(2rem, 3.2vw, 2.8rem); }
@@ -583,6 +592,7 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 @keyframes blink { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
+  .boot img, .boot span, .page-in > * { animation: none; }
   .typing span { animation: none; }
   .ptr.spinning .i { animation-duration: 2s; }
   .fx-enter .fx-seat, .fx-enter .fx-row, .fx-loading span { animation: none; }
