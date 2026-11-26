@@ -516,11 +516,18 @@ async function mutate(path, member, body) {
     return 'Points adjustment recorded.';
   }
   if (path === 'role-access') {
-    check(member.role === 'Admin', 'Only the Admin can change role access.', 403);
+    // The Admin and the President edit role access; only the Admin edits the President's own access.
+    check(['Admin', 'President'].includes(member.role), 'Only the Admin or the President can change role access.', 403);
     const role = String(body.role || '');
-    check(Object.hasOwn(defaultRolePermissions, role) && role !== 'Admin', 'Choose a role.');
     const list = body.permissions === undefined ? [] : [].concat(body.permissions);
     check(list.every(p => allPermissions.includes(p)), 'Choose valid permissions.');
+    if (!Object.hasOwn(defaultRolePermissions, role)) {
+      check(list.length > 0, 'Choose at least one permission.');
+      check((await run('UPDATE mun_custom_roles SET permissions=? WHERE name=?', [...new Set(list)], role)).changes === 1, 'Choose a role.');
+      await audit(member.id, 'role.access', role);
+      return role + ' access saved.';
+    }
+    check(role !== 'Admin' && (role !== 'President' || member.role === 'Admin'), 'Choose a role.');
     const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
     const saved = row ? (typeof row.value === 'string' ? parse(row.value) : row.value) || {} : {};
     saved[role] = [...new Set(list)];
@@ -528,6 +535,17 @@ async function mutate(path, member, body) {
     await audit(member.id, 'role.access', role);
     await loadRoleAccess();
     return role + ' access saved.';
+  }
+  if (path === 'role-delete') {
+    check(['Admin', 'President'].includes(member.role), 'Only the Admin or the President can delete roles.', 403);
+    const role = String(body.role || '');
+    await transact(async () => {
+      check((await run('DELETE FROM mun_custom_roles WHERE name=?', role)).changes === 1, 'Only roles you created can be deleted.');
+      await run("UPDATE mun_members SET role='Member' WHERE role=?", role);
+      await run('DELETE FROM mun_member_invites WHERE role=?', role);
+      await audit(member.id, 'role.delete', role);
+    });
+    return role + ' deleted. Its members are now Members.';
   }
   if (path === 'custom-role') {
     requirePermission(member, 'members');
