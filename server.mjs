@@ -943,6 +943,8 @@ function loadAsset(path) {
       body = Buffer.from(body.toString('utf8').replace(/(src|href)="\/?(app\.js|style\.css|pwa\.js|push-client\.js)"/g,
         (_, attribute, name) => attribute + '="/' + name + '?v=' + version('/' + name) + '"'));
     }
+    // Every deploy changes the service worker, so installed apps notice the update and reload themselves.
+    if (path === '/sw.js') body = Buffer.concat([Buffer.from('// build ' + ['/', ...versioned].map(item => loadAsset(item).etag.slice(1, 9)).join('.') + String.fromCharCode(10)), body]);
     const image = mime.startsWith('image/');
     const font = mime.startsWith('font/');
     loadedAssets.set(path, {

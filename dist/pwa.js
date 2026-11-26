@@ -57,6 +57,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
     });
     const check = () => registration.update().catch(() => {});
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
-    setInterval(check, 30 * 60 * 1000);
+    window.addEventListener('online', check);
+    setInterval(check, 5 * 60 * 1000);
   }).catch(() => {});
 }
