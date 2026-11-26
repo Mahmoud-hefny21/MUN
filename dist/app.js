@@ -105,6 +105,8 @@ let playerSort = 'total';
 let playerQuery = '';
 let leagueFilter = 'overall';
 let fxAnimate = true;
+let playerCategory = 'all';
+const categoryLabel = { board: 'Board', head: 'Head', member: 'Member' };
 const credits = value => (value / 10).toFixed(1) + 'm';
 const firstName = name => shortName(name).split(' ')[0];
 async function loadFantasy(force = false) {
@@ -124,6 +126,40 @@ const playerById = id => fantasyData.players.find(player => player.id === id);
 // The squad shown: the draft while editing, otherwise next round's squad if saved, otherwise the playing squad.
 const shownSquad = () => draft || fantasyData.upcoming || fantasyData.squad;
 const squadCost = ids => ids.reduce((sum, id) => sum + (playerById(id)?.price || 0), 0);
+// Team make-up rules (max per committee, Board and Head min/max), mirrored from the server.
+function makeup(ids) {
+  const s = fantasyData.settings;
+  const players = ids.map(playerById).filter(Boolean);
+  const count = category => players.filter(player => player.category === category).length;
+  const perCommittee = new Map();
+  for (const player of players) if (player.committee) perCommittee.set(player.committee, (perCommittee.get(player.committee) || 0) + 1);
+  return { board: count('board'), head: count('head'), perCommittee, s };
+}
+function blocksAdd(ids, player) {
+  const { board, head, perCommittee, s } = makeup(ids);
+  if (s.maxPerCommittee && player.committee && (perCommittee.get(player.committee) || 0) >= s.maxPerCommittee) return 'Max ' + s.maxPerCommittee + ' from ' + player.committee;
+  if (player.category === 'board' && board >= s.boardMax) return 'Board is full';
+  if (player.category === 'head' && head >= s.headMax) return 'Heads are full';
+  // keep room for the minimums still needed
+  const left = s.squadSize - ids.length - 1;
+  const needBoard = Math.max(0, s.boardMin - board - (player.category === 'board' ? 1 : 0));
+  const needHead = Math.max(0, s.headMin - head - (player.category === 'head' ? 1 : 0));
+  if (needBoard + needHead > left) return 'Keep a seat for ' + (needBoard ? 'Board' : 'a Head');
+  return '';
+}
+function makeupLine(ids) {
+  const { board, head, s } = makeup(ids);
+  const range = (min, max) => min && max < s.squadSize ? min + '–' + max : min ? 'min ' + min : max < s.squadSize ? 'max ' + max : '';
+  const parts = [['Board', board, range(s.boardMin, s.boardMax)], ['Heads', head, range(s.headMin, s.headMax)]]
+    .map(([label, value, rule]) => `<span class="fx-rule${rule ? '' : ' free'}">${label} <b>${value}</b>${rule ? ' <small>(' + rule + ')</small>' : ''}</span>`);
+  if (s.maxPerCommittee) parts.push(`<span class="fx-rule">Per committee <small>(max ${s.maxPerCommittee})</small></span>`);
+  return `<div class="fx-rules-line">${parts.join('')}</div>`;
+}
+const makeupMissing = ids => {
+  const { board, head, s } = makeup(ids);
+  return board < s.boardMin ? 'Add ' + (s.boardMin - board) + ' more board member' + (s.boardMin - board === 1 ? '' : 's') + '.'
+    : head < s.headMin ? 'Add ' + (s.headMin - head) + ' more Head' + (s.headMin - head === 1 ? '' : 's') + '.' : '';
+};
 const transfersFor = ids => fantasyData.squad ? ids.filter(id => !fantasyData.squad.players.includes(id)).length : 0;
 // Days between two YYYY-MM-DD dates (the server's date, so device clocks do not matter).
 const daysUntil = (date, from) => Math.max(0, Math.round((Date.parse(date) - Date.parse(from)) / 86400000));
@@ -139,6 +175,7 @@ function seat(id, squad, playing) {
     ${captain ? '<span class="fx-armband" title="Captain">C</span>' : ''}
     <button class="fx-seat-face" data-fx="player" data-id="${esc(id)}" aria-label="${esc(player.name)} details">${avatar(player, 'lg')}</button>
     <strong>${esc(firstName(player.name))}</strong>
+    ${player.category !== 'member' ? `<span class="fx-cat ${player.category}">${categoryLabel[player.category]}</span>` : ''}
     <span class="fx-seat-score">${playing ? score + ' pts' : 'Form ' + score}</span>
     <small>${credits(player.price)}</small>
     ${draft ? `<span class="fx-seat-actions"><button data-fx="captain" data-id="${esc(id)}" aria-pressed="${captain}" title="Make captain">C</button><button data-fx="remove" data-id="${esc(id)}" title="Remove">✕</button></span>` : ''}
@@ -171,11 +208,12 @@ function squadTab() {
         ${draft ? '' : f.settings.enabled ? '<button data-fx="edit">Transfers</button>' : ''}</div>
       <div class="fx-chamber">${all.join('')}</div>
       <div class="fx-meter"><span>Squad cost <b>${credits(cost)}</b> of ${credits(f.settings.budget)}</span><span class="${cost > f.settings.budget ? 'over' : ''}">Bank <b>${credits(f.settings.budget - cost)}</b></span></div>
+      ${draft ? makeupLine(ids) : ''}
       <div class="fx-bar"><span data-pct="${Math.min(100, Math.round(100 * cost / f.settings.budget))}" class="${cost > f.settings.budget ? 'over' : ''}"></span></div>
       ${playing && f.me?.hit ? `<p class="hint">This round includes a <b class="fx-hit">−${f.me.hit} pts</b> transfer hit.</p>` : ''}
       ${f.squad || draft ? `<p class="hint">Transfers for next round: ${transfers} (${f.settings.freeTransfers} free)${hit ? ` · <b class="fx-hit">−${hit} pts</b>` : ''}. Changes apply from ${dayLabel(f.round.next)}.</p>` : ''}
-      ${draft ? `<div class="actions"><button class="primary" data-fx="save" ${ids.length !== size || !squad.captain || cost > f.settings.budget ? 'disabled' : ''}>Save squad</button><button data-fx="cancel">Cancel</button></div>
-        ${ids.length === size && !squad.captain ? '<p class="hint">Tap C on a member to choose your captain.</p>' : ''}` : ''}
+      ${draft ? `<div class="actions"><button class="primary" data-fx="save" ${ids.length !== size || !squad.captain || cost > f.settings.budget || makeupMissing(ids) ? 'disabled' : ''}>Save squad</button><button data-fx="cancel">Cancel</button></div>
+        ${ids.length === size && !squad.captain ? '<p class="hint">Tap C on a member to choose your captain.</p>' : ''}${makeupMissing(ids) && ids.length === size ? '<p class="hint">' + makeupMissing(ids) + '</p>' : ''}` : ''}
     </section>
     ${draft ? playersTab(true) : ''}`;
 }
@@ -183,22 +221,24 @@ function playersTab(picking = false) {
   const f = fantasyData;
   const q = playerQuery.trim().toLowerCase();
   const chosen = draft?.players || [];
-  const list = f.players.filter(player => (!q || player.name.toLowerCase().includes(q) || (player.committee || '').toLowerCase().includes(q)))
+  const list = f.players.filter(player => (playerCategory === 'all' || player.category === playerCategory) && (!q || player.name.toLowerCase().includes(q) || (player.committee || '').toLowerCase().includes(q)))
     .sort((a, b) => (b[playerSort] - a[playerSort]) || a.name.localeCompare(b.name));
   const sorts = [['total', 'Total'], ['form', 'Form'], ['roundPoints', 'Round'], ['price', 'Price'], ['selectedBy', 'Picked %']];
   return `<section class="card stack">
     <div class="section-head"><h2>${picking ? 'Add members' : 'Members'}</h2><span class="count">${list.length}</span></div>
     <div class="directory-tools"><input id="fx-search" type="search" placeholder="Search name or committee" aria-label="Search members" value="${esc(playerQuery)}"><select id="fx-sort" aria-label="Sort members">${sorts.map(([key, label]) => `<option value="${key}" ${key === playerSort ? 'selected' : ''}>Sort: ${label}</option>`).join('')}</select></div>
+    <div class="filter-row fx-categories">${[['all', 'All'], ['board', 'Board'], ['head', 'Heads'], ['member', 'Members']].map(([id, label]) => `<button data-fx="category" data-id="${id}" class="${playerCategory === id ? 'selected' : ''}">${label}</button>`).join('')}</div>
     <div class="fx-list">${list.slice(0, 60).map(player => {
       const inSquad = chosen.includes(player.id);
       const full = chosen.length >= f.settings.squadSize;
       const affordable = squadCost(chosen) + player.price <= f.settings.budget;
+      const blocked = picking && !inSquad ? blocksAdd(chosen, player) : '';
       return `<div class="fx-row${inSquad ? ' picked' : ''}">
-        <button class="fx-row-main" data-fx="player" data-id="${esc(player.id)}">${avatar(player)}<span class="list-main"><strong>${esc(shortName(player.name))}</strong><small>${esc(player.committee || 'No committee')}</small></span></button>
+        <button class="fx-row-main" data-fx="player" data-id="${esc(player.id)}">${avatar(player)}<span class="list-main"><strong>${esc(shortName(player.name))}</strong><small>${player.category !== 'member' ? `<span class="fx-cat ${player.category}">${categoryLabel[player.category]}</span> ` : ''}${esc(player.committee || 'No committee')}</small></span></button>
         <span class="fx-stats"><span><b>${player.total}</b><small>pts</small></span><span><b>${player.form}</b><small>form</small></span><span><b>${player.selectedBy}%</b><small>picked</small></span></span>
         ${priceTag(player)}
         ${picking ? (inSquad ? `<button class="fx-add on" data-fx="remove" data-id="${esc(player.id)}" aria-label="Remove ${esc(player.name)}">✓</button>`
-          : `<button class="fx-add" data-fx="add" data-id="${esc(player.id)}" ${full || !affordable ? 'disabled' : ''} aria-label="Add ${esc(player.name)}">+</button>`) : ''}
+          : `<button class="fx-add" data-fx="add" data-id="${esc(player.id)}" ${full || !affordable || blocked ? 'disabled' : ''} title="${esc(blocked || (affordable ? '' : 'Over budget'))}" aria-label="Add ${esc(player.name)}">+</button>`) : ''}
       </div>`;
     }).join('') || '<p>No member matches your search.</p>'}</div></section>`;
 }
@@ -226,6 +266,7 @@ function rulesCard() {
   const s = fantasyData.settings;
   return `<details class="card fx-rules"><summary>${icon('book')} How MUN Fantasy works</summary><ul>
     <li>Pick ${s.squadSize} members (you can include yourself) within ${credits(s.budget)}. Choose a captain: their points count ×${s.captainMultiplier}.</li>
+    ${s.maxPerCommittee || s.boardMin || s.headMin || s.boardMax < s.squadSize || s.headMax < s.squadSize ? `<li>Team make-up:${s.maxPerCommittee ? ' at most ' + s.maxPerCommittee + ' per committee;' : ''} Board ${s.boardMin}–${s.boardMax}; Heads ${s.headMin}–${s.headMax}.</li>` : ''}
     <li>Your members score the real club points they earn each week (quizzes, activities, awards). A round runs Monday to Sunday, Cairo time.</li>
     <li>Squad changes apply from the next round. ${s.freeTransfers} free transfer${s.freeTransfers === 1 ? '' : 's'} per round; each extra costs ${s.transferPenalty} points.</li>
     <li>Prices update every round: ${s.riseThreshold}+ points last round raises a member by ${credits(s.priceStep)}; ${s.fallThreshold} or fewer lowers them (${credits(s.minPrice)} to ${credits(s.maxPrice)}).</li>
@@ -282,6 +323,7 @@ async function fantasyAction(button) {
   const size = fantasyData?.settings.squadSize;
   if (fx === 'tab') { fantasyTab = id; fxAnimate = true; return render(); }
   if (fx === 'league') { leagueFilter = id; return render(); }
+  if (fx === 'category') { playerCategory = id; return render(); }
   if (fx === 'player') return playerCard(id);
   if (fx === 'edit') {
     const base = fantasyData.upcoming || fantasyData.squad;
@@ -579,6 +621,11 @@ function admin() {
       <label>Fall at (round pts ≤)<input type="number" name="fallThreshold" min="-50" max="50" value="${fs.fallThreshold}"></label>
       <label>Lowest price (m)<input type="number" name="minPrice" step="0.1" min="1" max="30" value="${cr(fs.minPrice)}"></label>
       <label>Highest price (m)<input type="number" name="maxPrice" step="0.1" min="1" max="30" value="${cr(fs.maxPrice)}"></label>
+      <label>Max per committee (0 = no limit)<input type="number" name="maxPerCommittee" min="0" max="11" value="${fs.maxPerCommittee}"></label>
+      <label>Board members: minimum<input type="number" name="boardMin" min="0" max="11" value="${fs.boardMin}"></label>
+      <label>Board members: maximum<input type="number" name="boardMax" min="0" max="11" value="${fs.boardMax}"></label>
+      <label>Heads: minimum<input type="number" name="headMin" min="0" max="11" value="${fs.headMin}"></label>
+      <label>Heads: maximum<input type="number" name="headMax" min="0" max="11" value="${fs.headMax}"></label>
     </div><button class="primary">Save Fantasy rules</button></form></section>` : '';
   const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${scopedMembers().map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>
     <section class="card stack"><h2>Member points history</h2><p class="hint">Search any member to see every point they earned or lost, and who recorded it.</p><input id="history-search" type="search" placeholder="Search a member by name" aria-label="Search a member by name" autocomplete="off"><div id="history-results" class="pick-list">${historyMatches('')}</div><div id="points-history" class="history-box" aria-live="polite"></div></section>` : '';

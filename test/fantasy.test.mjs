@@ -84,6 +84,24 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
   assert.equal(view.round.today, '2026-12-16');
   assert.deepEqual(view.squad.players.sort(), ['b', 'c', 'd', 'g', 'h']);
 
+  // Team make-up: per-committee limit and Board / Head minimums and maximums.
+  await db.run("UPDATE mun_members SET role='Vice President' WHERE id='b'");
+  await db.run("UPDATE mun_members SET role='Head' WHERE id='c'");
+  view = await fantasy.overview(me);
+  assert.equal(view.players.find(player => player.id === 'b').category, 'board');
+  assert.equal(view.players.find(player => player.id === 'c').category, 'head');
+  assert.equal(view.players.find(player => player.id === 'd').category, 'member');
+  await fantasy.saveSettings({ maxPerCommittee: '2' });
+  await assert.rejects(fantasy.saveSquad(me, { players: ['b', 'c', 'd', 'g', 'h'], captain: 'c' }), /at most 2 from GA/);
+  await fantasy.saveSettings({ maxPerCommittee: '0', boardMax: '0' });
+  await assert.rejects(fantasy.saveSquad(me, { players: ['b', 'e', 'f', 'g', 'h'], captain: 'e' }), /at most 0 board members/);
+  await fantasy.saveSettings({ boardMax: '11', headMin: '1' });
+  await assert.rejects(fantasy.saveSquad(me, { players: ['b', 'e', 'f', 'g', 'h'], captain: 'e' }), /at least 1 Heads/);
+  assert.equal((await fantasy.saveSquad(me, { players: ['c', 'e', 'f', 'g', 'h'], captain: 'c' })).transfers >= 0, true);
+  await assert.rejects(fantasy.saveSettings({ boardMin: '3', boardMax: '2' }), /minimum must not be above/);
+  await assert.rejects(fantasy.saveSettings({ boardMin: '4', headMin: '2' }), /fit in the team/);
+  await fantasy.saveSettings({ headMin: '0' });
+
   // Rules: validated and configurable.
   await assert.rejects(fantasy.saveSettings({ minPrice: '100', maxPrice: '50' }), /minimum price/);
   await assert.rejects(fantasy.saveSettings({ squadSize: '0' }), /between 1 and 11/);

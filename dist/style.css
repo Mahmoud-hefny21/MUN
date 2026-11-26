@@ -390,6 +390,14 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .fx-bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--gold), var(--bright)); transition: width .5s ease; }
 .fx-bar span.over { background: var(--bad); }
 .fx-hit { color: var(--bad); }
+.fx-cat { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.fx-cat.board { border-color: var(--gold-line); color: var(--bright); }
+.fx-cat.head { border-color: var(--slate); color: var(--champagne); }
+.fx-rules-line { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.fx-rule { font-size: .8rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--gold-line); color: var(--muted); }
+.fx-rule b { color: var(--text); }
+.fx-rule.free { border-color: var(--line); }
+.fx-categories { margin: 0; }
 .fx-price { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: .84rem; white-space: nowrap; }
 .fx-price b { font-size: .7rem; }
 .fx-price .up { color: var(--good); }

@@ -17,11 +17,33 @@ export const defaultSettings = {
   riseThreshold: 5,       // round points at or above this raise the price
   fallThreshold: 0,       // round points at or below this lower the price
   minPrice: 40,
-  maxPrice: 120
+  maxPrice: 120,
+  // Team make-up (like FPL's per-club limit and positions). 0 = no limit for maxPerCommittee.
+  maxPerCommittee: 0,
+  boardMin: 0, boardMax: 11,
+  headMin: 0, headMax: 11
 };
+// Player categories: board roles, committee Heads, and everyone else.
+const boardRoles = ['President', 'Co-President', 'Upper Board', 'High Board', 'Vice President'];
+export const categoryOf = role => boardRoles.includes(role) ? 'board' : role === 'Head' ? 'head' : 'member';
+// Checks a team against the make-up rules; returns the first problem, or null.
+export function compositionProblem(players, config) {
+  const count = category => players.filter(player => player.category === category).length;
+  if (config.maxPerCommittee) {
+    const per = new Map();
+    for (const player of players) if (player.committee) per.set(player.committee, (per.get(player.committee) || 0) + 1);
+    for (const [committee, total] of per) if (total > config.maxPerCommittee) return 'Pick at most ' + config.maxPerCommittee + ' from ' + committee + '.';
+  }
+  if (count('board') > config.boardMax) return 'Pick at most ' + config.boardMax + ' board members.';
+  if (count('head') > config.headMax) return 'Pick at most ' + config.headMax + ' Heads.';
+  if (count('board') < config.boardMin) return 'Pick at least ' + config.boardMin + ' board members.';
+  if (count('head') < config.headMin) return 'Pick at least ' + config.headMin + ' Heads.';
+  return null;
+}
 const limits = {
   budget: [50, 2000], squadSize: [1, 11], captainMultiplier: [1, 5], freeTransfers: [0, 5], transferPenalty: [0, 20],
-  startPrice: [10, 300], priceStep: [0, 50], riseThreshold: [1, 100], fallThreshold: [-50, 50], minPrice: [10, 300], maxPrice: [10, 300]
+  startPrice: [10, 300], priceStep: [0, 50], riseThreshold: [1, 100], fallThreshold: [-50, 50], minPrice: [10, 300], maxPrice: [10, 300],
+  maxPerCommittee: [0, 11], boardMin: [0, 11], boardMax: [0, 11], headMin: [0, 11], headMax: [0, 11]
 };
 
 const addDays = (date, days) => {
@@ -65,6 +87,8 @@ export function createFantasy({ run, get, all, transact, today }) {
     if (next.minPrice > next.maxPrice) fail('The minimum price must not be above the maximum price.');
     if (next.startPrice < next.minPrice || next.startPrice > next.maxPrice) fail('The start price must be between the minimum and maximum prices.');
     if (next.fallThreshold >= next.riseThreshold) fail('The fall threshold must be below the rise threshold.');
+    if (next.boardMin > next.boardMax || next.headMin > next.headMax) fail('Each minimum must not be above its maximum.');
+    if (next.boardMin + next.headMin > next.squadSize) fail('Board and Head minimums together must fit in the team.');
     await run("INSERT INTO mun_settings(key, value) VALUES ('fantasy', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(next));
     return next;
   }
@@ -115,7 +139,7 @@ export function createFantasy({ run, get, all, transact, today }) {
     const pointsByPlayer = await roundPoints(config.seasonStart);
     await ensurePrices(current, config, pointsByPlayer);
     const [players, prices, picks, entries] = await Promise.all([
-      all('SELECT id, name, committee, photo FROM mun_members WHERE active=1 ORDER BY name'),
+      all('SELECT id, name, committee, photo, role FROM mun_members WHERE active=1 ORDER BY name'),
       all('SELECT player, round, price FROM mun_fantasy_prices WHERE round IN (?, ?)', current, addDays(current, -7)),
       all('SELECT manager, round, player, captain FROM mun_fantasy_picks WHERE round >= ? ORDER BY manager, round', config.seasonStart),
       all('SELECT manager, round, transfers, hit FROM mun_fantasy_entries WHERE round >= ?', config.seasonStart)
@@ -172,7 +196,7 @@ export function createFantasy({ run, get, all, transact, today }) {
     }
     const lastThree = [0, 1, 2].map(offset => addDays(current, -7 * (offset + 1)));
     const pool = players.map(player => ({
-      id: player.id, name: player.name, committee: player.committee, photo: player.photo,
+      id: player.id, name: player.name, committee: player.committee, photo: player.photo, category: categoryOf(player.role),
       price: priceNow.get(player.id) ?? config.startPrice,
       change: priceBefore.has(player.id) && priceNow.has(player.id) ? priceNow.get(player.id) - priceBefore.get(player.id) : 0,
       roundPoints: playerRound(player.id, current),
@@ -228,9 +252,11 @@ export function createFantasy({ run, get, all, transact, today }) {
     const current = roundOf(today());
     const next = addDays(current, 7);
     await ensurePrices(current, config, await roundPoints(config.seasonStart));
-    const rows = await all('SELECT m.id, COALESCE(p.price, ?) AS price FROM mun_members m LEFT JOIN mun_fantasy_prices p ON p.player=m.id AND p.round=? WHERE m.active=1 AND m.id = ANY(?::text[])',
+    const rows = await all('SELECT m.id, m.role, m.committee, COALESCE(p.price, ?) AS price FROM mun_members m LEFT JOIN mun_fantasy_prices p ON p.player=m.id AND p.round=? WHERE m.active=1 AND m.id = ANY(?::text[])',
       config.startPrice, current, chosen);
     if (rows.length !== chosen.length) fail('Pick active club members only.');
+    const problem = compositionProblem(rows.map(row => ({ committee: row.committee, category: categoryOf(row.role) })), config);
+    if (problem) fail(problem);
     const cost = rows.reduce((sum, row) => sum + row.price, 0);
     if (cost > config.budget) fail('This squad costs ' + (cost / 10).toFixed(1) + 'm; your budget is ' + (config.budget / 10).toFixed(1) + 'm.');
     return transact(async () => {
