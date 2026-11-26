@@ -60,7 +60,7 @@ export async function verifyBrowser(base, session, memberSession) {
     assert.equal(await fab.isVisible(), true);
     await page.evaluate(() => { location.hash = 'admin'; });
     const boardSections = page.getByRole('navigation', { name: 'Board sections' });
-    const firstMember = page.locator('.member-row').first();
+    const firstMember = page.locator('.member-row').filter({ hasNotText: 'Full-access account' }).first();
     await firstMember.locator('summary').click();
     await firstMember.getByRole('button', { name: 'Save member' }).waitFor();
     const addMember = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Add member' }) });
@@ -91,9 +91,10 @@ export async function verifyBrowser(base, session, memberSession) {
     await page.getByRole('heading', { name: 'Add resource' }).waitFor();
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/admin-resources-390.png', fullPage: true });
     await boardSections.getByRole('link', { name: 'Members' }).click();
-    await page.locator('.member-row').first().locator('summary').click();
-    await page.locator('.member-row').first().locator('.access-chips').waitFor();
-    await page.locator('.member-row').first().getByRole('button', { name: 'Points history' }).click();
+    const editable = page.locator('.member-row').filter({ hasNotText: 'Full-access account' }).first();
+    await editable.locator('summary').click();
+    await editable.locator('.access-chips').waitFor();
+    await editable.getByRole('button', { name: 'Points history' }).click();
     await page.locator('#modal .history-head').waitFor();
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/history-popup-390.png' });
     await page.getByRole('button', { name: 'Close' }).click();
@@ -103,14 +104,16 @@ export async function verifyBrowser(base, session, memberSession) {
     await boardSections.getByRole('link', { name: 'Roles & access' }).click();
     assert.equal(await page.getByRole('heading', { name: 'Publish activity' }).count(), 0);
     await page.getByLabel('Role name').fill('Browser editor');
-    await page.getByLabel('Manage quizzes and resources').check();
+    await page.locator('form[data-action="custom-role"] .perm-pill', { hasText: 'Learning' }).click();
     await page.getByRole('button', { name: 'Create role' }).click();
     await page.getByRole('status').filter({ hasText: 'Role created.' }).waitFor();
     await page.getByLabel('Google email').fill('browser-invite@gmail.com');
     const invite = page.locator('form[data-action="member-email"]');
     await invite.getByLabel('Role').selectOption('Browser editor');
-    await invite.getByRole('button', { name: 'Save role by email' }).click();
+    await invite.getByRole('button', { name: 'Save role' }).click();
     await page.getByText(/browser-invite@gmail.com/).waitFor();
+    assert.equal(await page.locator('[data-delete-role="Browser editor"]').count(), 1);
+    if (process.env.MUN_SHOT) { await page.setViewportSize({ width: 1280, height: 1100 }); await page.screenshot({ path: process.env.MUN_SHOT + '/roles.png', fullPage: true }); await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: process.env.MUN_SHOT + '/roles-m.png', fullPage: true }); }
     await boardSections.getByRole('link', { name: 'Activities' }).click();
     await page.getByRole('heading', { name: 'Record attendance' }).waitFor();
     await page.goBack();

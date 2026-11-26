@@ -343,6 +343,27 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .access { display: grid; gap: 6px; margin: 4px 0 6px; }
 .access-title { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .access-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Roles tab: access matrix */
+.roles-wide { grid-column: 1 / -1; }
+.card-title-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.role-matrix { display: grid; }
+.role-line { display: grid; grid-template-columns: minmax(130px, 180px) 1fr auto; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.role-line:first-child { border-top: 0; }
+.role-name { font-weight: 600; color: var(--bright); display: grid; }
+.role-name small { font-weight: 400; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+.perm-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.perm-pill { cursor: pointer; }
+.perm-pill input { position: absolute; opacity: 0; pointer-events: none; }
+.perm-pill span { display: inline-block; font-size: .8rem; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); transition: border-color .15s, background .15s, color .15s; }
+.perm-pill:hover span { border-color: var(--slate); }
+.perm-pill input:checked + span { border-color: var(--gold); background: rgba(196, 145, 47, .14); color: var(--bright); }
+.perm-pill input:focus-visible + span { outline: 2px solid var(--gold); outline-offset: 2px; }
+.role-actions { display: flex; gap: 6px; }
+.role-actions button { min-height: 36px; padding-inline: 14px; }
+@media (max-width: 700px) {
+  .role-line { grid-template-columns: 1fr auto; }
+  .role-line .perm-pills { grid-column: 1 / -1; grid-row: 2; }
+}
 /* Points history */
 .pick-list { display: grid; gap: 6px; }
 .pick { justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; font-weight: 500; text-align: start; background: var(--base); }

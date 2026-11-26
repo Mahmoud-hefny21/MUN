@@ -284,6 +284,7 @@ async function snapshot(member) {
     boardRoles: can('members') ? [...Object.entries(rolePermissions).filter(([role, granted]) => grantable(role, granted, member)).map(([role]) => role),
       ...data.customRoles.filter(role => grantable(role.name, customRolePermissions(role), member)).map(role => role.name)] : [],
     // What each role can do, shown next to the role picker.
+    customRoles: can('members') ? data.customRoles.map(role => ({ name: role.name })) : [],
     boardRoleAccess: can('members') ? Object.fromEntries([...Object.entries(rolePermissions), ...data.customRoles.map(role => [role.name, customRolePermissions(role)])]) : {},
     scope,
     boardInvites: data.invites,
