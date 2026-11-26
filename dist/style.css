@@ -350,6 +350,8 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .role-line { display: grid; grid-template-columns: minmax(130px, 180px) 1fr auto; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 .role-line:first-child { border-top: 0; }
 .role-name { font-weight: 600; color: var(--bright); display: grid; }
+.rename-role { justify-self: start; min-height: 0; padding: 0; border: 0; background: none; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.rename-role:hover { color: var(--gold); }
 .role-name small { font-weight: 400; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
 .perm-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .perm-pill { cursor: pointer; }

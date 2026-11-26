@@ -648,7 +648,7 @@ document.addEventListener('change', event => {
   field.querySelector('input').required = !field.hidden;
 });
 // Display names: the President role is called Secretary General in the club.
-const roleName = role => ({ President: 'Secretary General' })[role] || role;
+const roleName = role => state?.roleNames?.[role] || role;
 function admin() {
   const intro = `<a class="back-link" href="#menu">${icon('chevron')} Back</a>` + heading('Board Workspace', 'Manage club members, the feed, points and learning materials.');
   if (!state.permissions.length) return intro + '<div class="card"><p>This workspace is available to authorized board members.</p></div>';
@@ -770,7 +770,7 @@ function admin() {
   const pill = (key, on) => `<label class="perm-pill" title="${accessLabels[key]}"><input type="checkbox" name="permissions" value="${key}" ${on ? 'checked' : ''}><span>${shortAccess[key]}</span></label>`;
   const accessRows = Object.entries(state.boardRoleAccess || {}).filter(([role]) => !['Admin', 'Assigned Admin'].includes(role) && (role !== 'President' || ['Admin', 'Assigned Admin'].includes(state.profile.role)));
   const accessCard = ['Admin', 'Assigned Admin', 'President'].includes(state.profile.role) ? `<section class="card stack roles-wide"><div class="card-title-row"><h2>Role access</h2><span class="hint">Tap to switch on or off, then Save. Applies right away to everyone with the role.</span></div>
-    <div class="role-matrix">${accessRows.map(([role, granted]) => `<form class="role-line" data-action="role-access"><input type="hidden" name="role" value="${esc(role)}"><span class="role-name">${esc(roleName(role))}${isCustom(role) ? '<small>Custom</small>' : ''}</span><span class="perm-pills">${Object.keys(shortAccess).map(key => pill(key, granted.includes(key))).join('')}</span><span class="role-actions"><button class="primary">Save</button>${isCustom(role) || !['Member', ...(['Admin', 'Assigned Admin'].includes(state.profile.role) ? [] : ['President']), ...(state.profile.role === 'Admin' ? [] : ['Co-President'])].includes(role) ? `<button type="button" class="danger" data-delete-role="${esc(role)}" aria-label="Delete ${esc(roleName(role))}">Delete</button>` : ''}</span></form>`).join('')}</div>${(state.deletedRoles || []).length ? `<p class="hint">Deleted roles: ${state.deletedRoles.map(role => `<button type="button" data-restore-role="${esc(role)}">Restore ${esc(roleName(role))}</button>`).join(' ')}</p>` : ''}</section>` : '';
+    <div class="role-matrix">${accessRows.map(([role, granted]) => `<form class="role-line" data-action="role-access"><input type="hidden" name="role" value="${esc(role)}"><span class="role-name">${esc(roleName(role))}${isCustom(role) ? '<small>Custom</small>' : `<button type="button" class="rename-role" data-rename-role="${esc(role)}">Rename</button>`}</span><span class="perm-pills">${Object.keys(shortAccess).map(key => pill(key, granted.includes(key))).join('')}</span><span class="role-actions"><button class="primary">Save</button>${isCustom(role) || !['Member', ...(['Admin', 'Assigned Admin'].includes(state.profile.role) ? [] : ['President']), ...(state.profile.role === 'Admin' ? [] : ['Co-President'])].includes(role) ? `<button type="button" class="danger" data-delete-role="${esc(role)}" aria-label="Delete ${esc(roleName(role))}">Delete</button>` : ''}</span></form>`).join('')}</div>${(state.deletedRoles || []).length ? `<p class="hint">Deleted roles: ${state.deletedRoles.map(role => `<button type="button" data-restore-role="${esc(role)}">Restore ${esc(roleName(role))}</button>`).join(' ')}</p>` : ''}</section>` : '';
   const assignCard = `<section class="card stack"><h2>Assign a role by email</h2><p class="hint">Works before they sign in; the role applies on first Google sign-in.</p>
     <form data-action="member-email"><label>Google email<input type="email" name="email" maxlength="254" required placeholder="name1234567@miuegypt.edu.eg"></label>
     <div class="form-grid"><label>Role<select name="role">${state.boardRoles.map(role => `<option value="${esc(role)}">${esc(roleName(role))}</option>`).join('')}</select></label>
@@ -1039,11 +1039,16 @@ content.addEventListener('change', async event => {
 });
 content.addEventListener('click', event => {
   const button = event.target.closest('button');
-  if (!state || !button || (button.form && !button.dataset.deleteRole) || busy) return;
+  if (!state || !button || (button.form && !button.dataset.deleteRole && !button.dataset.renameRole) || busy) return;
   if (button.dataset.signout !== undefined) return signOut(button);
   if (button.dataset.install !== undefined) return showWelcome(true);
   if (button.dataset.history) return showHistory(button);
   if (button.dataset.restoreRole) return perform(button, () => update('role-delete', { role: button.dataset.restoreRole, restore: 'true' }));
+  if (button.dataset.renameRole) {
+    const name = prompt(`New name for "${roleName(button.dataset.renameRole)}"`, roleName(button.dataset.renameRole));
+    if (!name || !name.trim() || name.trim() === roleName(button.dataset.renameRole)) return;
+    return perform(button, () => update('role-rename', { role: button.dataset.renameRole, name: name.trim() }));
+  }
   if (button.dataset.deleteRole) {
     if (!confirm(`Delete the role "${roleName(button.dataset.deleteRole)}"? Everyone with it becomes a Member.`)) return;
     return perform(button, () => update('role-delete', { role: button.dataset.deleteRole }));

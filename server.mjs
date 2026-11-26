@@ -184,10 +184,16 @@ const allPermissions = ['members', 'posts', 'points', 'learning', 'activities'];
 const defaultRolePermissions = structuredClone(rolePermissions);
 // Built-in roles the Admin or President removed; Admin, President and Member always stay.
 const deletedRoles = new Set();
+// Display names for built-in roles (the stored role stays the same, so permissions never change).
+const roleNames = { President: 'Secretary General' };
+const displayRole = role => roleNames[role] || role;
 const permanentRoles = ['Admin', 'Member'];
 async function loadRoleAccess() {
   const removed = await get("SELECT value FROM mun_settings WHERE key='deleted-roles'");
   deletedRoles.clear();
+  const names = await get("SELECT value FROM mun_settings WHERE key='role-names'");
+  for (const key of Object.keys(roleNames)) delete roleNames[key];
+  Object.assign(roleNames, { President: 'Secretary General' }, names ? parse(names.value) || {} : {});
   for (const role of removed ? parse(removed.value) || [] : []) if (!permanentRoles.includes(role)) deletedRoles.add(role);
   const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
   const saved = row ? (typeof row.value === 'string' ? parse(row.value) : row.value) : {};
@@ -294,6 +300,7 @@ async function snapshot(member) {
     // What each role can do, shown next to the role picker.
     customRoles: can('members') ? data.customRoles.map(role => ({ name: role.name })) : [],
     deletedRoles: can('members') ? [...deletedRoles] : [],
+    roleNames: { ...roleNames },
     boardRoleAccess: can('members') ? Object.fromEntries([...Object.entries(rolePermissions).filter(([role]) => !deletedRoles.has(role)), ...data.customRoles.map(role => [role.name, customRolePermissions(role)])]) : {},
     scope,
     boardInvites: data.invites,
@@ -538,7 +545,7 @@ async function mutate(path, member, body) {
       check(list.length > 0, 'Choose at least one permission.');
       check((await run('UPDATE mun_custom_roles SET permissions=? WHERE name=?', [...new Set(list)], role)).changes === 1, 'Choose a role.');
       await audit(member.id, 'role.access', role);
-      return (role === 'President' ? 'Secretary General' : role) + ' access saved.';
+      return displayRole(role) + ' access saved.';
     }
     check(!siteAdmins.includes(role) && (role !== 'President' || siteAdmins.includes(member.role)), 'Choose a role.');
     const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
@@ -547,7 +554,23 @@ async function mutate(path, member, body) {
     await run("INSERT INTO mun_settings(key, value) VALUES ('role-access', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(saved));
     await audit(member.id, 'role.access', role);
     await loadRoleAccess();
-    return (role === 'President' ? 'Secretary General' : role) + ' access saved.';
+    return displayRole(role) + ' access saved.';
+  }
+  if (path === 'role-rename') {
+    check([...siteAdmins, 'President'].includes(member.role), 'Only the Admin or the President can rename roles.', 403);
+    const role = String(body.role || '');
+    check(Object.hasOwn(defaultRolePermissions, role) && role !== 'Admin' && (!['President', 'Assigned Admin'].includes(role) || siteAdmins.includes(member.role)), 'Choose a role.');
+    const name = clean(body.name, 40, 'role name');
+    check(/^[\p{L}\p{N}][\p{L}\p{N} &'-]{0,39}$/u.test(name), 'Choose a different role name.');
+    const taken = [...Object.keys(defaultRolePermissions).filter(item => item !== role).map(displayRole), ...(await all('SELECT name FROM mun_custom_roles')).map(item => item.name)];
+    check(!taken.some(item => item.toLowerCase() === name.toLowerCase()), 'Another role already has this name.');
+    const saved = { ...roleNames };
+    if (name === role) delete saved[role]; else saved[role] = name;
+    if (role === 'President' && name === 'President') saved.President = 'President';
+    await run("INSERT INTO mun_settings(key, value) VALUES ('role-names', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(saved));
+    await audit(member.id, 'role.rename', role);
+    await loadRoleAccess();
+    return 'Role renamed to ' + name + '.';
   }
   if (path === 'role-delete') {
     check([...siteAdmins, 'President'].includes(member.role), 'Only the Admin or the President can delete roles.', 403);
@@ -557,7 +580,7 @@ async function mutate(path, member, body) {
       deletedRoles.delete(role);
       await run("INSERT INTO mun_settings(key, value) VALUES ('deleted-roles', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify([...deletedRoles]));
       await audit(member.id, 'role.restore', role);
-      return (role === 'President' ? 'Secretary General' : role) + ' restored.';
+      return displayRole(role) + ' restored.';
     }
     if (Object.hasOwn(defaultRolePermissions, role)) {
       check(!permanentRoles.includes(role) && !deletedRoles.has(role), 'This role cannot be deleted.');
@@ -571,7 +594,7 @@ async function mutate(path, member, body) {
         await run("UPDATE mun_roster SET role='Member' WHERE role=?", role);
         await audit(member.id, 'role.delete', role);
       });
-      return (role === 'President' ? 'Secretary General' : role) + ' deleted. Its members are now Members.';
+      return displayRole(role) + ' deleted. Its members are now Members.';
     }
     await transact(async () => {
       check((await run('DELETE FROM mun_custom_roles WHERE name=?', role)).changes === 1, 'Only roles you created can be deleted.');

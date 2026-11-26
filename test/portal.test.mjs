@@ -233,6 +233,11 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('role-delete', { role: 'Temp Role' }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Member' }, owner)).status, 400);
     assert.equal((await post('role-delete', { role: 'President' }, owner)).status, 403);
+    assert.equal((await post('role-rename', { role: 'High Board', name: 'Executive Board' }, owner)).status, 200);
+    assert.equal((await (await get('/api/session', chiefSession)).json()).data.roleNames['High Board'], 'Executive Board');
+    assert.equal((await post('role-rename', { role: 'Upper Board', name: 'Executive Board' }, owner)).status, 400);
+    assert.equal((await post('role-rename', { role: 'President', name: 'Boss' }, owner)).status, 400);
+    assert.equal((await post('role-rename', { role: 'High Board', name: 'High Board' }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Vice President' }, owner)).status, 200);
     assert.equal((await post('directory-save', { email: 'x3@miuegypt.edu.eg', name: 'X', role: 'Vice President' }, chiefSession)).status, 400);
     assert.equal((await post('role-delete', { role: 'Vice President', restore: 'true' }, owner)).status, 200);
