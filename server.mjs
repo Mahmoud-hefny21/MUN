@@ -538,7 +538,7 @@ async function mutate(path, member, body) {
       check(list.length > 0, 'Choose at least one permission.');
       check((await run('UPDATE mun_custom_roles SET permissions=? WHERE name=?', [...new Set(list)], role)).changes === 1, 'Choose a role.');
       await audit(member.id, 'role.access', role);
-      return role + ' access saved.';
+      return (role === 'President' ? 'Secretary General' : role) + ' access saved.';
     }
     check(!siteAdmins.includes(role) && (role !== 'President' || siteAdmins.includes(member.role)), 'Choose a role.');
     const row = await get("SELECT value FROM mun_settings WHERE key='role-access'");
@@ -547,7 +547,7 @@ async function mutate(path, member, body) {
     await run("INSERT INTO mun_settings(key, value) VALUES ('role-access', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(saved));
     await audit(member.id, 'role.access', role);
     await loadRoleAccess();
-    return role + ' access saved.';
+    return (role === 'President' ? 'Secretary General' : role) + ' access saved.';
   }
   if (path === 'role-delete') {
     check([...siteAdmins, 'President'].includes(member.role), 'Only the Admin or the President can delete roles.', 403);
