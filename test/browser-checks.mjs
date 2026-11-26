@@ -51,6 +51,13 @@ export async function verifyBrowser(base, session, memberSession) {
     }
     await page.goto(base + '/#home');
     await page.setViewportSize({ width: 320, height: 640 });
+    // The AI button steps aside at the footer so it never covers the credits.
+    const fab = page.locator('.ai-fab');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.ai-fab')).opacity === '0');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.ai-fab')).opacity === '1');
+    assert.equal(await fab.isVisible(), true);
     await page.evaluate(() => { location.hash = 'admin'; });
     const boardSections = page.getByRole('navigation', { name: 'Board sections' });
     const firstMember = page.locator('.member-row').first();

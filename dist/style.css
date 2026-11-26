@@ -108,6 +108,9 @@ body:not(.signed-out):not(.admin-page):not([data-route="assistant"]) .ai-fab {
   transition: transform .15s ease;
 }
 .ai-fab:hover { transform: scale(1.06); }
+/* Hidden while the footer is on screen, so it never covers the credits. */
+.ai-fab { transition: transform .2s ease, opacity .2s ease; }
+body.footer-in-view .ai-fab { opacity: 0; transform: scale(.8); pointer-events: none; }
 .ai-fab .i { width: 23px; height: 23px; stroke-width: 1.9; }
 /* Pull to refresh indicator */
 .ptr { position: fixed; z-index: 15; top: -48px; left: 50%; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: var(--panel); border: 1px solid var(--line); color: var(--muted); box-shadow: 0 6px 18px rgba(2, 6, 35, .4); transform: translate(-50%, 0); transition: transform .25s ease, color .15s; pointer-events: none; }

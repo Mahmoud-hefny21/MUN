@@ -1151,4 +1151,9 @@ document.addEventListener('focusout', () => requestAnimationFrame(updateKeyboard
     }
   });
 })();
+// The AI button steps aside while the footer credits are on screen.
+const siteFooter = document.querySelector('.site-footer');
+if (siteFooter && 'IntersectionObserver' in window) {
+  new IntersectionObserver(([entry]) => document.body.classList.toggle('footer-in-view', entry.isIntersecting)).observe(siteFooter);
+}
 loadSession();
