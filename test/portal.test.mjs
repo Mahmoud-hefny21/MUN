@@ -232,6 +232,7 @@ test('Google sign-in, shared club activity, roles and single awards', async () =
     assert.equal((await post('role-access', { role: 'Temp Role', permissions: ['posts', 'points'] }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Temp Role' }, owner)).status, 200);
     assert.equal((await post('role-delete', { role: 'Member' }, owner)).status, 400);
+    assert.equal((await post('role-delete', { role: 'President' }, owner)).status, 403);
     assert.equal((await post('role-delete', { role: 'Vice President' }, owner)).status, 200);
     assert.equal((await post('directory-save', { email: 'x3@miuegypt.edu.eg', name: 'X', role: 'Vice President' }, chiefSession)).status, 400);
     assert.equal((await post('role-delete', { role: 'Vice President', restore: 'true' }, owner)).status, 200);

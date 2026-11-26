@@ -184,7 +184,7 @@ const allPermissions = ['members', 'posts', 'points', 'learning', 'activities'];
 const defaultRolePermissions = structuredClone(rolePermissions);
 // Built-in roles the Admin or President removed; Admin, President and Member always stay.
 const deletedRoles = new Set();
-const permanentRoles = ['Admin', 'President', 'Member'];
+const permanentRoles = ['Admin', 'Member'];
 async function loadRoleAccess() {
   const removed = await get("SELECT value FROM mun_settings WHERE key='deleted-roles'");
   deletedRoles.clear();
@@ -557,11 +557,12 @@ async function mutate(path, member, body) {
       deletedRoles.delete(role);
       await run("INSERT INTO mun_settings(key, value) VALUES ('deleted-roles', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify([...deletedRoles]));
       await audit(member.id, 'role.restore', role);
-      return role + ' restored.';
+      return (role === 'President' ? 'Secretary General' : role) + ' restored.';
     }
     if (Object.hasOwn(defaultRolePermissions, role)) {
       check(!permanentRoles.includes(role) && !deletedRoles.has(role), 'This role cannot be deleted.');
       check(!['Co-President', 'Assigned Admin'].includes(role) || member.role === 'Admin', 'Only the Admin can delete this role.', 403);
+      check(role !== 'President' || siteAdmins.includes(member.role), 'Only the Admin can delete Secretary General.', 403);
       await transact(async () => {
         deletedRoles.add(role);
         await run("INSERT INTO mun_settings(key, value) VALUES ('deleted-roles', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify([...deletedRoles]));
@@ -570,7 +571,7 @@ async function mutate(path, member, body) {
         await run("UPDATE mun_roster SET role='Member' WHERE role=?", role);
         await audit(member.id, 'role.delete', role);
       });
-      return role + ' deleted. Its members are now Members.';
+      return (role === 'President' ? 'Secretary General' : role) + ' deleted. Its members are now Members.';
     }
     await transact(async () => {
       check((await run('DELETE FROM mun_custom_roles WHERE name=?', role)).changes === 1, 'Only roles you created can be deleted.');
