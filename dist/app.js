@@ -105,7 +105,7 @@ let playerSort = 'total';
 let playerQuery = '';
 let leagueFilter = 'overall';
 let fxAnimate = true;
-const credits = value => (value / 10).toFixed(1) + ' cr';
+const credits = value => (value / 10).toFixed(1) + 'm';
 const firstName = name => shortName(name).split(' ')[0];
 async function loadFantasy(force = false) {
   if (fantasyLoading || (fantasyData && !force)) return;
@@ -148,12 +148,12 @@ function squadTab() {
   const f = fantasyData;
   const squad = shownSquad();
   const size = f.settings.squadSize;
-  // Delegates are members who have signed in; until enough have joined, a full squad is not possible.
+  // Players are members who have signed in; until enough have joined, a full squad is not possible.
   const available = f.players.filter(player => player.id !== state.profile.id).length;
   if (!squad && !draft) {
-    return `<section class="card fx-empty">${icon('trophy')}<h2>Build your delegation</h2><p>Pick ${size} delegates within ${credits(f.settings.budget)}. Their real club points become your fantasy points from next round; your captain scores ×${f.settings.captainMultiplier}.</p>
+    return `<section class="card fx-empty">${icon('trophy')}<h2>Build your squad</h2><p>Pick ${size} members within ${credits(f.settings.budget)}. Their real club points become your fantasy points from next round; your captain scores ×${f.settings.captainMultiplier}.</p>
       ${!f.settings.enabled ? '<p class="notice">Fantasy is paused by the board.</p>'
-        : available < size ? `<p class="notice">Fantasy opens when ${size} other delegates have joined the portal (${available} so far). Invite your committee to sign in!</p>`
+        : available < size ? `<p class="notice">Fantasy opens when ${size} other members have joined the portal (${available} so far). Invite your committee to sign in!</p>`
         : '<button class="primary" data-fx="edit">Pick your squad</button>'}</section>`;
   }
   const playing = !draft && !f.upcoming && Boolean(f.squad);
@@ -176,7 +176,7 @@ function squadTab() {
       ${playing && f.me?.hit ? `<p class="hint">This round includes a <b class="fx-hit">−${f.me.hit} pts</b> transfer hit.</p>` : ''}
       ${f.squad || draft ? `<p class="hint">Transfers for next round: ${transfers} (${f.settings.freeTransfers} free)${hit ? ` · <b class="fx-hit">−${hit} pts</b>` : ''}. Changes apply from ${dayLabel(f.round.next)}.</p>` : ''}
       ${draft ? `<div class="actions"><button class="primary" data-fx="save" ${ids.length !== size || !squad.captain || cost > f.settings.budget ? 'disabled' : ''}>Save squad</button><button data-fx="cancel">Cancel</button></div>
-        ${ids.length === size && !squad.captain ? '<p class="hint">Tap C on a delegate to choose your captain.</p>' : ''}` : ''}
+        ${ids.length === size && !squad.captain ? '<p class="hint">Tap C on a member to choose your captain.</p>' : ''}` : ''}
     </section>
     ${draft ? playersTab(true) : ''}`;
 }
@@ -188,8 +188,8 @@ function playersTab(picking = false) {
     .sort((a, b) => (b[playerSort] - a[playerSort]) || a.name.localeCompare(b.name));
   const sorts = [['total', 'Total'], ['form', 'Form'], ['roundPoints', 'Round'], ['price', 'Price'], ['selectedBy', 'Picked %']];
   return `<section class="card stack">
-    <div class="section-head"><h2>${picking ? 'Add delegates' : 'Delegates'}</h2><span class="count">${list.length}</span></div>
-    <div class="directory-tools"><input id="fx-search" type="search" placeholder="Search name or committee" aria-label="Search delegates" value="${esc(playerQuery)}"><select id="fx-sort" aria-label="Sort delegates">${sorts.map(([key, label]) => `<option value="${key}" ${key === playerSort ? 'selected' : ''}>Sort: ${label}</option>`).join('')}</select></div>
+    <div class="section-head"><h2>${picking ? 'Add members' : 'Members'}</h2><span class="count">${list.length}</span></div>
+    <div class="directory-tools"><input id="fx-search" type="search" placeholder="Search name or committee" aria-label="Search members" value="${esc(playerQuery)}"><select id="fx-sort" aria-label="Sort members">${sorts.map(([key, label]) => `<option value="${key}" ${key === playerSort ? 'selected' : ''}>Sort: ${label}</option>`).join('')}</select></div>
     <div class="fx-list">${list.slice(0, 60).map(player => {
       const inSquad = chosen.includes(player.id);
       const full = chosen.length >= f.settings.squadSize;
@@ -201,7 +201,7 @@ function playersTab(picking = false) {
         ${picking ? (inSquad ? `<button class="fx-add on" data-fx="remove" data-id="${esc(player.id)}" aria-label="Remove ${esc(player.name)}">✓</button>`
           : `<button class="fx-add" data-fx="add" data-id="${esc(player.id)}" ${full || !affordable ? 'disabled' : ''} aria-label="Add ${esc(player.name)}">+</button>`) : ''}
       </div>`;
-    }).join('') || '<p>No delegate matches your search.</p>'}</div></section>`;
+    }).join('') || '<p>No member matches your search.</p>'}</div></section>`;
 }
 function leaguesTab() {
   const f = fantasyData;
@@ -209,7 +209,7 @@ function leaguesTab() {
   const rows = leagueFilter === 'committee' ? f.league.filter(row => row.committee && row.committee === committee) : f.league;
   const table = list => `<ol class="fx-table">${list.map((row, index) => `<li class="${row.id === state.profile.id ? 'me' : ''}"><span class="fx-rank">${leagueFilter === 'committee' ? index + 1 : row.rank}</span><span class="list-main"><strong>${esc(shortName(row.name))}${row.id === state.profile.id ? ' · You' : ''}</strong><small>${esc(row.committee || '')}</small></span><span class="fx-col">${row.round}<small>round</small></span><span class="fx-col total">${row.total}<small>total</small></span></li>`).join('') || '<li class="hint">No managers yet. Pick a squad to enter.</li>'}</ol>`;
   if (!f.managers) {
-    return `<section class="card fx-empty">${icon('chart')}<h2>No managers yet</h2><p>Standings, round leaders and the dream delegation appear once members pick their squads.</p></section>
+    return `<section class="card fx-empty">${icon('chart')}<h2>No managers yet</h2><p>Standings, round leaders and the dream team appear once members pick their squads.</p></section>
       <section class="card stack fx-achievements"><h2>Achievements</h2><div class="fx-badges">${f.achievements.map(item => `<div class="fx-badge${item.earned ? ' earned' : ''}"><span>${icon(item.earned ? 'star' : 'shield')}</span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></div>`).join('')}</div></section>`;
   }
   return `<div class="grid fx-leagues">
@@ -217,7 +217,7 @@ function leaguesTab() {
       <div class="filter-row">${[['overall', 'Overall'], ...(committee ? [['committee', committee]] : [])].map(([id, label]) => `<button data-fx="league" data-id="${esc(id)}" class="${leagueFilter === id ? 'selected' : ''}">${esc(label)}</button>`).join('')}</div>
       ${table(rows)}</section>
     <div class="stack">
-      <section class="card stack"><h2>Dream delegation</h2><p class="hint">Top scorers of Round ${f.round.number} so far.</p>
+      <section class="card stack"><h2>Dream team</h2><p class="hint">Top scorers of Round ${f.round.number} so far.</p>
         <div class="fx-dream">${f.dreamTeam.map((player, index) => `<button class="fx-dream-seat" data-fx="player" data-id="${esc(player.id)}">${index === 0 ? '<span class="fx-armband">★</span>' : ''}${avatar(player)}<strong>${esc(firstName(player.name))}</strong><small>${player.roundPoints} pts</small></button>`).join('') || '<p class="hint">No points scored yet this round.</p>'}</div></section>
       <section class="card stack"><h2>Round leaders</h2>${f.roundLeague.length ? `<ol class="fx-table compact">${f.roundLeague.slice(0, 5).map((row, index) => `<li class="${row.id === state.profile.id ? 'me' : ''}"><span class="fx-rank">${index + 1}</span><span class="list-main"><strong>${esc(shortName(row.name))}</strong></span><span class="fx-col total">${row.round}<small>pts</small></span></li>`).join('')}</ol>` : '<p class="hint">No squads are playing yet.</p>'}</section>
       <section class="card stack"><h2>Achievements</h2><div class="fx-badges">${f.achievements.map(item => `<div class="fx-badge${item.earned ? ' earned' : ''}"><span>${icon(item.earned ? 'star' : 'shield')}</span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></div>`).join('')}</div></section>
@@ -226,22 +226,22 @@ function leaguesTab() {
 function rulesCard() {
   const s = fantasyData.settings;
   return `<details class="card fx-rules"><summary>${icon('book')} How MUN Fantasy works</summary><ul>
-    <li>Pick ${s.squadSize} delegates (not yourself) within ${credits(s.budget)}. Choose a captain: their points count ×${s.captainMultiplier}.</li>
-    <li>Your delegates score the real club points they earn each week (quizzes, activities, awards). A round runs Monday to Sunday, Cairo time.</li>
+    <li>Pick ${s.squadSize} members (not yourself) within ${credits(s.budget)}. Choose a captain: their points count ×${s.captainMultiplier}.</li>
+    <li>Your members score the real club points they earn each week (quizzes, activities, awards). A round runs Monday to Sunday, Cairo time.</li>
     <li>Squad changes apply from the next round. ${s.freeTransfers} free transfer${s.freeTransfers === 1 ? '' : 's'} per round; each extra costs ${s.transferPenalty} points.</li>
-    <li>Prices update every round: ${s.riseThreshold}+ points last round raises a delegate by ${credits(s.priceStep)}; ${s.fallThreshold} or fewer lowers them (${credits(s.minPrice)} to ${credits(s.maxPrice)}).</li>
+    <li>Prices update every round: ${s.riseThreshold}+ points last round raises a member by ${credits(s.priceStep)}; ${s.fallThreshold} or fewer lowers them (${credits(s.minPrice)} to ${credits(s.maxPrice)}).</li>
   </ul></details>`;
 }
 function fantasy() {
   if (!fantasyData) {
     loadFantasy();
-    return heading('Fantasy', 'Build a delegation of club members and compete every round.') + '<div class="card fx-loading"><span></span><span></span><span></span></div>';
+    return heading('Fantasy', 'Build a squad of club members and compete every round.') + '<div class="card fx-loading"><span></span><span></span><span></span></div>';
   }
   const f = fantasyData;
   const value = squadCost((f.upcoming || f.squad)?.players || []);
-  const tabs = [['squad', 'My squad'], ['players', 'Delegates'], ['leagues', 'Leagues'], ['points', 'My points']];
+  const tabs = [['squad', 'My squad'], ['players', 'Members'], ['leagues', 'Leagues'], ['points', 'My points']];
   const body = fantasyTab === 'players' ? playersTab(Boolean(draft)) : fantasyTab === 'leagues' ? leaguesTab()
-    : fantasyTab === 'points' ? stats() + `<div class="grid"><section class="card"><h2>Delegate standings</h2><div class="actions">${[['points', 'Global'], ['week', 'Weekly'], ['month', 'Monthly']].map(([id, label]) => `<button data-scope="${id}" aria-pressed="${scope === id}" class="${scope === id ? 'selected' : ''}">${label}</button>`).join('')}</div>${ranking(scope)}</section><section class="card"><div class="section-head"><h2>Points history</h2></div>${pointHistory()}</section></div>`
+    : fantasyTab === 'points' ? stats() + `<div class="grid"><section class="card"><h2>Member standings</h2><div class="actions">${[['points', 'Global'], ['week', 'Weekly'], ['month', 'Monthly']].map(([id, label]) => `<button data-scope="${id}" aria-pressed="${scope === id}" class="${scope === id ? 'selected' : ''}">${label}</button>`).join('')}</div>${ranking(scope)}</section><section class="card"><div class="section-head"><h2>Points history</h2></div>${pointHistory()}</section></div>`
     : squadTab();
   return `<div class="fx-page${fxAnimate ? ' fx-enter' : ''}"><div class="fx-hero">
       <div><span class="eyebrow">MUN Fantasy · Round ${f.round.number}</span><h1>Fantasy</h1><p>${dayLabel(f.round.start)} – ${dayLabel(f.round.end)} · Next round in ${daysUntil(f.round.next, f.round.today)} day${daysUntil(f.round.next, f.round.today) === 1 ? '' : 's'}</p></div>
@@ -249,7 +249,7 @@ function fantasy() {
         <div><b data-count="${f.me.round}">${f.me.round}</b><small>Round</small></div>
         <div><b data-count="${f.me.total}">${f.me.total}</b><small>Total</small></div>
         <div><b>#${f.me.rank}</b><small>of ${f.managers}</small></div>
-        <div><b>${(value / 10).toFixed(1)}</b><small>Value (cr)</small></div>
+        <div><b>${(value / 10).toFixed(1)}</b><small>Value (m)</small></div>
       </div>` : `<span class="fx-status">${icon('trophy')} ${f.managers ? f.managers + ' manager' + (f.managers === 1 ? '' : 's') + ' in the league' : 'Season starting'}</span>`}</div>
     <nav class="fx-tabs" aria-label="Fantasy sections">${tabs.map(([id, label]) => `<button data-fx="tab" data-id="${id}" aria-current="${fantasyTab === id ? 'page' : 'false'}">${label}</button>`).join('')}</nav>
     ${body}${fantasyTab === 'squad' ? rulesCard() : ''}</div>`;
@@ -570,16 +570,16 @@ function admin() {
       <label>Fantasy<select name="enabled"><option value="true" ${fs.enabled ? 'selected' : ''}>Open</option><option value="false" ${fs.enabled ? '' : 'selected'}>Paused</option></select></label>
       <label>Season start (Monday)<input type="date" name="seasonStart" value="${esc(fs.seasonStart)}"></label>
       <label>Squad size<input type="number" name="squadSize" min="1" max="11" value="${fs.squadSize}"></label>
-      <label>Budget (cr)<input type="number" name="budget" step="0.1" min="5" max="200" value="${cr(fs.budget)}"></label>
+      <label>Budget (m)<input type="number" name="budget" step="0.1" min="5" max="200" value="${cr(fs.budget)}"></label>
       <label>Captain multiplier<input type="number" name="captainMultiplier" min="1" max="5" value="${fs.captainMultiplier}"></label>
       <label>Free transfers per round<input type="number" name="freeTransfers" min="0" max="5" value="${fs.freeTransfers}"></label>
       <label>Points per extra transfer<input type="number" name="transferPenalty" min="0" max="20" value="${fs.transferPenalty}"></label>
-      <label>Start price (cr)<input type="number" name="startPrice" step="0.1" min="1" max="30" value="${cr(fs.startPrice)}"></label>
-      <label>Price change (cr)<input type="number" name="priceStep" step="0.1" min="0" max="5" value="${cr(fs.priceStep)}"></label>
+      <label>Start price (m)<input type="number" name="startPrice" step="0.1" min="1" max="30" value="${cr(fs.startPrice)}"></label>
+      <label>Price change (m)<input type="number" name="priceStep" step="0.1" min="0" max="5" value="${cr(fs.priceStep)}"></label>
       <label>Rise at (round pts ≥)<input type="number" name="riseThreshold" min="1" max="100" value="${fs.riseThreshold}"></label>
       <label>Fall at (round pts ≤)<input type="number" name="fallThreshold" min="-50" max="50" value="${fs.fallThreshold}"></label>
-      <label>Lowest price (cr)<input type="number" name="minPrice" step="0.1" min="1" max="30" value="${cr(fs.minPrice)}"></label>
-      <label>Highest price (cr)<input type="number" name="maxPrice" step="0.1" min="1" max="30" value="${cr(fs.maxPrice)}"></label>
+      <label>Lowest price (m)<input type="number" name="minPrice" step="0.1" min="1" max="30" value="${cr(fs.minPrice)}"></label>
+      <label>Highest price (m)<input type="number" name="maxPrice" step="0.1" min="1" max="30" value="${cr(fs.maxPrice)}"></label>
     </div><button class="primary">Save Fantasy rules</button></form></section>` : '';
   const pointsPanel = can('points') ? `<section class="card stack"><h2>Adjust points</h2><form data-action="points" data-operation="${crypto.randomUUID()}"><label>Member<select name="member" required>${scopedMembers().map(member => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('')}</select></label><label>Adjustment<input type="number" name="amount" min="-100" max="100" required></label><label>Reason<input name="reason" maxlength="120" required></label><button class="primary">Record adjustment</button></form></section>
     <section class="card stack"><h2>Member points history</h2><p class="hint">Search any member to see every point they earned or lost, and who recorded it.</p><input id="history-search" type="search" placeholder="Search a member by name" aria-label="Search a member by name" autocomplete="off"><div id="history-results" class="pick-list">${historyMatches('')}</div><div id="points-history" class="history-box" aria-live="polite"></div></section>` : '';

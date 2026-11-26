@@ -134,7 +134,7 @@ export async function verifyBrowser(base, session, memberSession) {
     assert.equal(await page.locator('.fx-seat.captain').count(), 1);
     assert.equal(await page.locator('.fx-seat:not(.empty)').count(), 2);
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/fantasy-squad-320.png', fullPage: true });
-    await fantasyNav.getByRole('button', { name: 'Delegates' }).click();
+    await fantasyNav.getByRole('button', { name: 'Members' }).click();
     await page.locator('#fx-search').fill('deleg');
     await page.locator('.fx-row').first().waitFor();
     assert.equal(await page.locator('#fx-search').evaluate(element => element === document.activeElement), true, 'search keeps focus');
@@ -146,7 +146,7 @@ export async function verifyBrowser(base, session, memberSession) {
     assert.equal(await page.locator('.fx-badge.earned').filter({ hasText: 'Squad builder' }).count(), 1);
     if (screenshotDir) await page.screenshot({ path: screenshotDir + '/fantasy-leagues-320.png', fullPage: true });
     await fantasyNav.getByRole('button', { name: 'My points' }).click();
-    await page.getByRole('heading', { name: 'Delegate standings' }).waitFor();
+    await page.getByRole('heading', { name: 'Member standings' }).waitFor();
     await page.evaluate(() => { location.hash = 'admin/points'; });
     await page.locator('form[data-action="fantasy-settings"]').getByLabel('Squad size').fill('5');
     await page.locator('form[data-action="fantasy-settings"]').getByRole('button', { name: 'Save Fantasy rules' }).click();

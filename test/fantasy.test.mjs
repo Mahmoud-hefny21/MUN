@@ -35,7 +35,7 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
   await assert.rejects(fantasy.saveSquad(me, { players: squad, captain: 'g' }), /captain/);
   await assert.rejects(fantasy.saveSquad(me, { players: ['b', 'c', 'd', 'e', 'zz'], captain: 'b' }), /active club members/);
   await fantasy.saveSettings({ budget: '250' });
-  await assert.rejects(fantasy.saveSquad(me, { players: squad, captain: 'b' }), /costs 30\.0 cr; your budget is 25\.0 cr/);
+  await assert.rejects(fantasy.saveSquad(me, { players: squad, captain: 'b' }), /costs 30\.0m; your budget is 25\.0m/);
   await fantasy.saveSettings({ budget: '320' });
   assert.deepEqual(await fantasy.saveSquad(me, { players: squad, captain: 'b' }), { transfers: 0, hit: 0, cost: 300 });
   assert.deepEqual(await fantasy.saveSquad({ id: 'h' }, { players: ['b', 'c', 'd', 'e', 'g'], captain: 'c' }), { transfers: 0, hit: 0, cost: 300 });

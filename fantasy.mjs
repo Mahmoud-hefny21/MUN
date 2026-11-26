@@ -2,18 +2,18 @@
 // Players are active members; their points in a round are the points they earned that week (mun_transactions).
 // Managers pick a squad within a budget and a captain; squad changes apply from the next round (the deadline),
 // extra transfers cost points, and prices move each round with the player's last-round performance.
-// Prices are integers in tenths of a credit (60 = 6.0 cr). Rounds are Cairo weeks starting Monday (YYYY-MM-DD).
+// Prices are integers in tenths of a million (60 = 6.0m). Rounds are Cairo weeks starting Monday (YYYY-MM-DD).
 
 export const defaultSettings = {
   enabled: true,
   seasonStart: '',        // Monday of round 1; set on first use
-  budget: 320,            // 32.0 cr
+  budget: 320,            // 32.0m
   squadSize: 5,
   captainMultiplier: 2,
   freeTransfers: 1,
   transferPenalty: 4,
-  startPrice: 60,         // 6.0 cr
-  priceStep: 2,           // 0.2 cr
+  startPrice: 60,         // 6.0m
+  priceStep: 2,           // 0.2m
   riseThreshold: 5,       // round points at or above this raise the price
   fallThreshold: 0,       // round points at or below this lower the price
   minPrice: 40,
@@ -222,7 +222,7 @@ export function createFantasy({ run, get, all, transact, today }) {
     const config = await settings();
     if (!config.enabled) fail('Fantasy is paused by the board.', 403);
     const chosen = Array.isArray(input.players) ? [...new Set(input.players.map(String))] : [];
-    if (chosen.length !== config.squadSize) fail('Pick exactly ' + config.squadSize + ' delegates.');
+    if (chosen.length !== config.squadSize) fail('Pick exactly ' + config.squadSize + ' members.');
     if (chosen.includes(member.id)) fail('You cannot pick yourself.');
     const captain = String(input.captain || '');
     if (!chosen.includes(captain)) fail('Choose a captain from your squad.');
@@ -233,7 +233,7 @@ export function createFantasy({ run, get, all, transact, today }) {
       config.startPrice, current, chosen);
     if (rows.length !== chosen.length) fail('Pick active club members only.');
     const cost = rows.reduce((sum, row) => sum + row.price, 0);
-    if (cost > config.budget) fail('This squad costs ' + (cost / 10).toFixed(1) + ' cr; your budget is ' + (config.budget / 10).toFixed(1) + ' cr.');
+    if (cost > config.budget) fail('This squad costs ' + (cost / 10).toFixed(1) + 'm; your budget is ' + (config.budget / 10).toFixed(1) + 'm.');
     return transact(async () => {
       await get('SELECT pg_advisory_xact_lock(hashtext(?))', 'fantasy:' + member.id);
       const playing = await all(`SELECT player FROM mun_fantasy_picks WHERE manager=? AND round = (
