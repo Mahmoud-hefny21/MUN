@@ -413,6 +413,13 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .fx-card-stats small { color: var(--muted); font-size: .72rem; }
 @keyframes fx-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
+/* Wide screens fit the whole delegation in one row: keep the captain (second in the markup) in the centre. */
+@media (min-width: 768px) {
+  .fx-chamber .fx-seat { order: 2; }
+  .fx-chamber .fx-seat:nth-child(1), .fx-chamber .fx-seat:nth-child(3) { order: 0; }
+  .fx-chamber .fx-seat.captain:nth-child(2) { order: 1; }
+}
+
 /* ---------- Tablet and smaller ---------- */
 @media (max-width: 900px) {
   .sidebar { width: 185px; padding-inline: 10px; }

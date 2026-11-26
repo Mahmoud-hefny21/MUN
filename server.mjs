@@ -31,7 +31,8 @@ const json = JSON.stringify;
 const parse = JSON.parse;
 const token = () => randomBytes(32).toString('base64url');
 const digest = value => createHash('sha256').update(value).digest('base64url');
-const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+// Cairo date. Tests may pin it with MUN_TODAY (ignored outside NODE_ENV=test) to simulate Fantasy rounds.
+const today = () => (env.NODE_ENV === 'test' && env.MUN_TODAY) || new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const addQuiz = (question, options, answer, explanation, starts) =>
   run('INSERT INTO mun_quizzes(question, options, answer, explanation, starts) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING', question, json(options), answer, explanation, starts);
 const addResource = (title, category, body, url) =>

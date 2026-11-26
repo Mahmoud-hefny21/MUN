@@ -202,11 +202,12 @@ export function createFantasy({ run, get, all, transact, today }) {
 
     return {
       settings: config,
-      round: { number: rounds.length, start: current, end: addDays(current, 6), next },
+      round: { number: rounds.length, start: current, end: addDays(current, 6), next, today: today() },
       players: pool,
       squad: mine ? { players: mine.players, captain: mine.captain } : null,
       upcoming: upcoming ? { players: upcoming.players, captain: upcoming.captain, ...(hits.get(member.id + ':' + next) || { transfers: 0, hit: 0 }) } : null,
-      me: me ? { total: me.total, round: me.round, rank: me.rank, roundRank: roundTable.findIndex(row => row.id === member.id) + 1, history: me.history } : null,
+      me: me ? { total: me.total, round: me.round, rank: me.rank, roundRank: roundTable.findIndex(row => row.id === member.id) + 1, history: me.history,
+        hit: hits.get(member.id + ':' + current)?.hit || 0 } : null,
       managers: table.length,
       league: table.slice(0, 50).map(({ history, ...row }) => row),
       roundLeague: roundTable.slice(0, 10).map(({ history, ...row }) => row),

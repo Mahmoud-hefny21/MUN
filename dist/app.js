@@ -125,7 +125,8 @@ const playerById = id => fantasyData.players.find(player => player.id === id);
 const shownSquad = () => draft || fantasyData.upcoming || fantasyData.squad;
 const squadCost = ids => ids.reduce((sum, id) => sum + (playerById(id)?.price || 0), 0);
 const transfersFor = ids => fantasyData.squad ? ids.filter(id => !fantasyData.squad.players.includes(id)).length : 0;
-const daysUntil = date => Math.max(0, Math.ceil((Date.parse(date + 'T00:00:00') - Date.now()) / 86400000));
+// Days between two YYYY-MM-DD dates (the server's date, so device clocks do not matter).
+const daysUntil = (date, from) => Math.max(0, Math.round((Date.parse(date) - Date.parse(from)) / 86400000));
 const dayLabel = date => new Intl.DateTimeFormat('en', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(date + 'T00:00:00Z'));
 const priceTag = player => `<span class="fx-price">${credits(player.price)}${player.change ? `<b class="${player.change > 0 ? 'up' : 'down'}">${player.change > 0 ? '▲' : '▼'}${(Math.abs(player.change) / 10).toFixed(1)}</b>` : ''}</span>`;
 
@@ -164,14 +165,16 @@ function squadTab() {
   const open = draft ? Array.from({ length: Math.max(0, size - ids.length) }, () => '<div class="fx-seat empty"><span class="avatar lg">+</span><strong>Open seat</strong><small>Add from the list</small></div>') : [];
   const all = [...seats, ...open];
   const captainIndex = ids.indexOf(squad.captain);
-  if (captainIndex > 0 && !draft) all.splice(Math.floor(all.length / 2), 0, all.splice(captainIndex, 1)[0]);
+  const middle = Math.min(1, all.length - 1);
+  if (captainIndex >= 0 && captainIndex !== middle && !draft) all.splice(middle, 0, all.splice(captainIndex, 1)[0]);
   return `<section class="card fx-pitch-card">
       <div class="section-head"><h2>${draft ? 'Edit squad' : playing ? 'Playing this round' : 'Your squad for Round ' + (f.round.number + 1)}</h2>
         ${draft ? '' : f.settings.enabled ? '<button data-fx="edit">Transfers</button>' : ''}</div>
       <div class="fx-chamber">${all.join('')}</div>
       <div class="fx-meter"><span>Squad cost <b>${credits(cost)}</b> of ${credits(f.settings.budget)}</span><span class="${cost > f.settings.budget ? 'over' : ''}">Bank <b>${credits(f.settings.budget - cost)}</b></span></div>
       <div class="fx-bar"><span data-pct="${Math.min(100, Math.round(100 * cost / f.settings.budget))}" class="${cost > f.settings.budget ? 'over' : ''}"></span></div>
-      ${f.squad || draft ? `<p class="hint">Transfers: ${transfers} (${f.settings.freeTransfers} free)${hit ? ` · <b class="fx-hit">−${hit} pts</b>` : ''}. Changes apply from ${dayLabel(f.round.next)}.</p>` : ''}
+      ${playing && f.me?.hit ? `<p class="hint">This round includes a <b class="fx-hit">−${f.me.hit} pts</b> transfer hit.</p>` : ''}
+      ${f.squad || draft ? `<p class="hint">Transfers for next round: ${transfers} (${f.settings.freeTransfers} free)${hit ? ` · <b class="fx-hit">−${hit} pts</b>` : ''}. Changes apply from ${dayLabel(f.round.next)}.</p>` : ''}
       ${draft ? `<div class="actions"><button class="primary" data-fx="save" ${ids.length !== size || !squad.captain || cost > f.settings.budget ? 'disabled' : ''}>Save squad</button><button data-fx="cancel">Cancel</button></div>
         ${ids.length === size && !squad.captain ? '<p class="hint">Tap C on a delegate to choose your captain.</p>' : ''}` : ''}
     </section>
@@ -237,7 +240,7 @@ function fantasy() {
     : fantasyTab === 'points' ? stats() + `<div class="grid"><section class="card"><h2>Delegate standings</h2><div class="actions">${[['points', 'Global'], ['week', 'Weekly'], ['month', 'Monthly']].map(([id, label]) => `<button data-scope="${id}" aria-pressed="${scope === id}" class="${scope === id ? 'selected' : ''}">${label}</button>`).join('')}</div>${ranking(scope)}</section><section class="card"><div class="section-head"><h2>Points history</h2></div>${pointHistory()}</section></div>`
     : squadTab();
   return `<div class="fx-page${fxAnimate ? ' fx-enter' : ''}"><div class="fx-hero">
-      <div><span class="eyebrow">MUN Fantasy · Round ${f.round.number}</span><h1>Fantasy</h1><p>${dayLabel(f.round.start)} – ${dayLabel(f.round.end)} · Next round in ${daysUntil(f.round.next)} day${daysUntil(f.round.next) === 1 ? '' : 's'}</p></div>
+      <div><span class="eyebrow">MUN Fantasy · Round ${f.round.number}</span><h1>Fantasy</h1><p>${dayLabel(f.round.start)} – ${dayLabel(f.round.end)} · Next round in ${daysUntil(f.round.next, f.round.today)} day${daysUntil(f.round.next, f.round.today) === 1 ? '' : 's'}</p></div>
       <div class="fx-scores">
         <div><b data-count="${f.me?.round ?? 0}">${f.me?.round ?? 0}</b><small>Round</small></div>
         <div><b data-count="${f.me?.total ?? 0}">${f.me?.total ?? 0}</b><small>Total</small></div>

@@ -78,6 +78,8 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
   now = '2026-12-16';
   view = await fantasy.overview(me);
   assert.equal(view.me.round, -4);
+  assert.equal(view.me.hit, 4);
+  assert.equal(view.round.today, '2026-12-16');
   assert.deepEqual(view.squad.players.sort(), ['b', 'c', 'd', 'g', 'h']);
 
   // Rules: validated and configurable.
