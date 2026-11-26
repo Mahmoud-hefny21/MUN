@@ -88,7 +88,14 @@ main { margin-left: 230px; }
 #inbox-link { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px; }
 #inbox-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bright); color: var(--night); font-size: .68rem; font-weight: 700; display: grid; place-items: center; }
 #content { max-width: 1200px; margin: auto; padding: 30px clamp(20px, 4vw, 52px) 48px; }
-body:not(.signed-out) #content { padding-bottom: 104px; }
+body:not(.signed-out) #content { padding-bottom: 8px; }
+/* Footer: credits in the identity's register, a short gold hairline and tracked small print. */
+.site-footer { max-width: 1200px; margin: 0 auto; padding: 18px clamp(20px, 4vw, 52px) 40px; display: grid; justify-items: center; gap: 6px; text-align: center; }
+body:not(.signed-out) .site-footer { padding-bottom: 104px; }
+.footer-rule { width: 56px; height: 1px; background: var(--gold); opacity: .7; margin-bottom: 6px; }
+.site-footer p { font-size: .92rem; font-style: italic; color: var(--muted); }
+.site-footer strong { font-style: normal; font-weight: 600; color: var(--bright); }
+.site-footer small { font-size: .68rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); opacity: .8; }
 .signed-out { background: radial-gradient(ellipse 80% 55% at 50% 0%, rgba(196, 145, 47, .16), transparent 70%), var(--base); }
 .signed-out .sidebar, .signed-out .topbar { display: none; }
 .signed-out main { margin-left: 0; }
@@ -254,7 +261,7 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .menu-install { width: 100%; margin-top: 14px; min-height: 50px; }
 
 /* ---------- Sign-in page ---------- */
-.login-page { min-height: calc(100vh - 60px); display: grid; place-items: center; padding: 8px 0; }
+.login-page { min-height: calc(100vh - 170px); display: grid; place-items: center; padding: 8px 0; }
 .login-card { width: min(440px, 100%); display: grid; justify-items: center; gap: 6px; text-align: center; padding: 34px 28px 26px; background: rgba(2, 6, 35, .86); border: 1px solid var(--gold-line); border-radius: 24px; box-shadow: 0 24px 60px rgba(2, 6, 35, .45); }
 .login-card .eyebrow { margin-bottom: 2px; }
 .login-card h1 { font-size: 2.5rem; }
@@ -492,7 +499,8 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
   .compact-brand img { border-radius: 50%; }
   #crumb { flex: 1; min-width: 0; color: var(--text); font-weight: 600; font-size: .95rem; }
   #content { padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
-  body:not(.signed-out):not(.admin-page) #content { padding-bottom: calc(var(--mobile-dock-height) + 16px + env(safe-area-inset-bottom, 0px)); }
+  body:not(.signed-out):not(.admin-page) .site-footer { padding-bottom: calc(var(--mobile-dock-height) + 20px + env(safe-area-inset-bottom, 0px)); }
+  body.keyboard-open .site-footer { display: none; }
   body:not(.signed-out):not(.admin-page) .mobile-tabs {
     position: fixed; z-index: 3;
     left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right));
@@ -555,7 +563,7 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
   .section-head { margin-bottom: 10px; }
 }
 @media (max-width: 480px) {
-  .login-page { min-height: calc(100vh - 36px); }
+  .login-page { min-height: calc(100vh - 150px); }
   .login-card { padding: 28px 20px 22px; border-radius: 20px; }
   .login-logo { width: 104px; height: 104px; }
   .login-card h1 { font-size: 2.2rem; }
