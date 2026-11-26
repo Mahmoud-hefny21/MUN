@@ -208,6 +208,10 @@ function leaguesTab() {
   const committee = state.profile.committee;
   const rows = leagueFilter === 'committee' ? f.league.filter(row => row.committee && row.committee === committee) : f.league;
   const table = list => `<ol class="fx-table">${list.map((row, index) => `<li class="${row.id === state.profile.id ? 'me' : ''}"><span class="fx-rank">${leagueFilter === 'committee' ? index + 1 : row.rank}</span><span class="list-main"><strong>${esc(shortName(row.name))}${row.id === state.profile.id ? ' · You' : ''}</strong><small>${esc(row.committee || '')}</small></span><span class="fx-col">${row.round}<small>round</small></span><span class="fx-col total">${row.total}<small>total</small></span></li>`).join('') || '<li class="hint">No managers yet. Pick a squad to enter.</li>'}</ol>`;
+  if (!f.managers) {
+    return `<section class="card fx-empty">${icon('chart')}<h2>No managers yet</h2><p>Standings, round leaders and the dream delegation appear once members pick their squads.</p></section>
+      <section class="card stack fx-achievements"><h2>Achievements</h2><div class="fx-badges">${f.achievements.map(item => `<div class="fx-badge${item.earned ? ' earned' : ''}"><span>${icon(item.earned ? 'star' : 'shield')}</span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></div>`).join('')}</div></section>`;
+  }
   return `<div class="grid fx-leagues">
     <section class="card stack"><div class="section-head"><h2>Standings</h2><span class="count">${f.managers} managers</span></div>
       <div class="filter-row">${[['overall', 'Overall'], ...(committee ? [['committee', committee]] : [])].map(([id, label]) => `<button data-fx="league" data-id="${esc(id)}" class="${leagueFilter === id ? 'selected' : ''}">${esc(label)}</button>`).join('')}</div>
@@ -241,12 +245,12 @@ function fantasy() {
     : squadTab();
   return `<div class="fx-page${fxAnimate ? ' fx-enter' : ''}"><div class="fx-hero">
       <div><span class="eyebrow">MUN Fantasy · Round ${f.round.number}</span><h1>Fantasy</h1><p>${dayLabel(f.round.start)} – ${dayLabel(f.round.end)} · Next round in ${daysUntil(f.round.next, f.round.today)} day${daysUntil(f.round.next, f.round.today) === 1 ? '' : 's'}</p></div>
-      <div class="fx-scores">
-        <div><b data-count="${f.me?.round ?? 0}">${f.me?.round ?? 0}</b><small>Round</small></div>
-        <div><b data-count="${f.me?.total ?? 0}">${f.me?.total ?? 0}</b><small>Total</small></div>
-        <div><b>${f.me ? '#' + f.me.rank : '–'}</b><small>of ${f.managers}</small></div>
-        <div><b>${value ? (value / 10).toFixed(1) : '–'}</b><small>Value (cr)</small></div>
-      </div></div>
+      ${f.me ? `<div class="fx-scores">
+        <div><b data-count="${f.me.round}">${f.me.round}</b><small>Round</small></div>
+        <div><b data-count="${f.me.total}">${f.me.total}</b><small>Total</small></div>
+        <div><b>#${f.me.rank}</b><small>of ${f.managers}</small></div>
+        <div><b>${(value / 10).toFixed(1)}</b><small>Value (cr)</small></div>
+      </div>` : `<span class="fx-status">${icon('trophy')} ${f.managers ? f.managers + ' manager' + (f.managers === 1 ? '' : 's') + ' in the league' : 'Season starting'}</span>`}</div>
     <nav class="fx-tabs" aria-label="Fantasy sections">${tabs.map(([id, label]) => `<button data-fx="tab" data-id="${id}" aria-current="${fantasyTab === id ? 'page' : 'false'}">${label}</button>`).join('')}</nav>
     ${body}${fantasyTab === 'squad' ? rulesCard() : ''}</div>`;
 }

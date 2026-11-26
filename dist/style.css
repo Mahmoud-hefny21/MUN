@@ -149,7 +149,7 @@ video.avatar { transform: scaleX(-1); }
 .stats, .shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; }
 .grid { grid-template-columns: 1.48fr 1fr; margin-top: 24px; }
 .stat { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 13px; }
-.stat strong { display: block; font-family: Georgia, serif; font-size: 1.65rem; line-height: 1.1; }
+.stat strong { display: block; font-family: Georgia, serif; font-size: 1.65rem; line-height: 1.1; font-variant-numeric: lining-nums; }
 .stat small { color: var(--muted); }
 .shortcuts .card { display: flex; gap: 13px; align-items: center; }
 .shortcuts small { display: block; color: var(--muted); }
@@ -331,11 +331,14 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .fx-hero p { margin-top: 6px; font-size: .86rem; }
 .fx-scores { display: grid; grid-template-columns: repeat(4, minmax(0, auto)); gap: 8px; }
 .fx-scores div { min-width: 82px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(20, 26, 56, .7); text-align: center; }
-.fx-scores b { display: block; font-family: Georgia, serif; font-size: 1.45rem; color: var(--bright); line-height: 1.1; }
+.fx-scores b { display: block; font-family: Georgia, serif; font-size: 1.45rem; color: var(--bright); line-height: 1.1; font-variant-numeric: lining-nums tabular-nums; }
+.fx-status { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--gold-line); border-radius: 999px; color: var(--bright); font-size: .86rem; font-weight: 600; background: rgba(235, 199, 120, .08); }
+.fx-status .i { width: 18px; height: 18px; }
+.fx-achievements { margin-top: 16px; }
 .fx-scores small { color: var(--muted); font-size: .72rem; white-space: nowrap; }
-.fx-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-bottom: 16px; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--night); }
+.fx-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 16px; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--night); }
 .fx-tabs::-webkit-scrollbar { display: none; }
-.fx-tabs button { flex: 1 0 auto; border: 0; border-radius: 10px; background: transparent; color: var(--muted); min-height: 42px; }
+.fx-tabs button { min-width: 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); min-height: 42px; padding: .5rem .25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fx-tabs button[aria-current="page"] { background: rgba(235, 199, 120, .16); color: var(--bright); }
 .fx-loading { display: flex; justify-content: center; gap: 8px; padding: 48px; }
 .fx-loading span { width: 10px; height: 10px; border-radius: 50%; background: var(--bright); animation: blink 1.2s infinite; }
@@ -471,6 +474,7 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
   body.keyboard-open .chat-form { bottom: 8px; }
   .msg { max-width: 94%; }
   .fx-hero { padding: 18px 16px; }
+  .fx-tabs button { font-size: .82rem; }
   .fx-scores { width: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .fx-scores div { min-width: 0; padding: 8px 4px; }
   .fx-scores b { font-size: 1.15rem; }
