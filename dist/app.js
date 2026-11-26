@@ -243,6 +243,16 @@ function squadTab() {
     </section>
     ${draft ? playersTab(true) : ''}`;
 }
+function priceMovers() {
+  const f = fantasyData;
+  const movers = f.players.filter(player => player.change).sort((a, b) => b.change - a.change || a.name.localeCompare(b.name));
+  if (!movers.length) return `<section class="card fx-movers"><h2>Price changes</h2><p class="hint">Everyone is at the same price this round. Prices move automatically when the next round starts, from this round's points.</p></section>`;
+  const row = player => `<button class="fx-mover" data-fx="player" data-id="${esc(player.id)}"><span>${esc(shortName(player.name))}</span>${priceTag(player)}</button>`;
+  const up = movers.filter(player => player.change > 0), down = movers.filter(player => player.change < 0);
+  return `<section class="card fx-movers"><h2>Price changes this round</h2><div class="fx-movers-grid">
+    <div><h3>${up.length} rose</h3>${up.slice(0, 5).map(row).join('') || '<p class="hint">No rises.</p>'}</div>
+    <div><h3>${down.length} fell</h3>${down.slice(0, 5).map(row).join('') || '<p class="hint">No falls.</p>'}</div></div></section>`;
+}
 function playersTab(picking = false) {
   const f = fantasyData;
   const q = playerQuery.trim().toLowerCase();
@@ -296,7 +306,7 @@ function rulesCard() {
     ${s.maxPerCommittee || s.boardMin || s.headMin || s.boardMax < s.squadSize || s.headMax < s.squadSize ? `<li>Team make-up:${s.maxPerCommittee ? ' at most ' + s.maxPerCommittee + ' per committee;' : ''} Board ${s.boardMin}–${s.boardMax}; Heads ${s.headMin}–${s.headMax}.</li>` : ''}
     <li>Your members score the real club points they earn each week (quizzes, activities, awards). A round runs Monday to Sunday, Cairo time.</li>
     <li>Squad changes apply from the next round. ${s.freeTransfers} free transfer${s.freeTransfers === 1 ? '' : 's'} per round; each extra costs ${s.transferPenalty} points.</li>
-    <li>Prices update every round: ${s.riseThreshold}+ points last round raises a member by ${credits(s.priceStep)}; ${s.fallThreshold} or fewer lowers them (${credits(s.minPrice)} to ${credits(s.maxPrice)}).</li>
+    <li>Everyone starts at ${credits(s.startPrice)}. Prices change automatically at the start of each round from last round's points: +${credits(s.priceStep)} for every ${s.riseThreshold} points (up to +${credits(s.priceStep * s.maxRiseSteps)}); ${s.fallThreshold} or fewer points lowers the price by ${credits(s.priceStep)}. Prices stay between ${credits(s.minPrice)} and ${credits(s.maxPrice)}.</li>
   </ul></details>`;
 }
 function fantasy() {
@@ -308,7 +318,7 @@ function fantasy() {
   const f = fantasyData;
   const value = squadCost((f.upcoming || f.squad)?.players || []);
   const tabs = [['squad', 'My squad'], ['players', 'Members'], ['leagues', 'Leagues'], ['points', 'My points']];
-  const body = fantasyTab === 'players' ? playersTab(Boolean(draft)) : fantasyTab === 'leagues' ? leaguesTab()
+  const body = fantasyTab === 'players' ? (draft ? '' : priceMovers()) + playersTab(Boolean(draft)) : fantasyTab === 'leagues' ? leaguesTab()
     : fantasyTab === 'points' ? stats() + `<div class="grid"><section class="card"><h2>Member standings</h2><div class="actions">${[['points', 'Global'], ['week', 'Weekly'], ['month', 'Monthly']].map(([id, label]) => `<button data-scope="${id}" aria-pressed="${scope === id}" class="${scope === id ? 'selected' : ''}">${label}</button>`).join('')}</div>${ranking(scope)}</section><section class="card"><div class="section-head"><h2>Points history</h2></div>${pointHistory()}</section></div>`
     : squadTab();
   return `<div class="fx-page${fxAnimate ? ' fx-enter' : ''}"><div class="fx-hero">
@@ -645,7 +655,8 @@ function admin() {
       <label>Points per extra transfer<input type="number" name="transferPenalty" min="0" max="20" value="${fs.transferPenalty}"></label>
       <label>Start price (m)<input type="number" name="startPrice" step="0.1" min="1" max="30" value="${cr(fs.startPrice)}"></label>
       <label>Price change (m)<input type="number" name="priceStep" step="0.1" min="0" max="5" value="${cr(fs.priceStep)}"></label>
-      <label>Rise at (round pts ≥)<input type="number" name="riseThreshold" min="1" max="100" value="${fs.riseThreshold}"></label>
+      <label>Points per price rise<input type="number" name="riseThreshold" min="1" max="100" value="${fs.riseThreshold}"></label>
+      <label>Max rises per round (steps)<input type="number" name="maxRiseSteps" min="1" max="10" value="${fs.maxRiseSteps}"></label>
       <label>Fall at (round pts ≤)<input type="number" name="fallThreshold" min="-50" max="50" value="${fs.fallThreshold}"></label>
       <label>Lowest price (m)<input type="number" name="minPrice" step="0.1" min="1" max="30" value="${cr(fs.minPrice)}"></label>
       <label>Highest price (m)<input type="number" name="maxPrice" step="0.1" min="1" max="30" value="${cr(fs.maxPrice)}"></label>

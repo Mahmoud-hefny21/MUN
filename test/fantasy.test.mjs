@@ -9,7 +9,7 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
   const db = await createDatabase();
   let now = '2026-11-25'; // Wednesday of round 2026-11-23
   const fantasy = createFantasy({ ...db, today: () => now });
-  const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
   for (const id of ids) {
     await db.run('INSERT INTO mun_members(id,email,name,photo,active,role,committee) VALUES (?,?,?,?,1,?,?)', id, id + '@example.test', 'Delegate ' + id.toUpperCase(), '', 'Member', id < 'e' ? 'GA' : 'SC');
   }
@@ -52,6 +52,7 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
   await award('c', 2, '2026-12-01');
   await award('g', 3, '2026-12-02');
   await award('b', 9, '2026-11-24'); // round 1 points never count for round 2 squads
+  await award('i', 15, '2026-12-01'); // a big round: three price steps next round
   view = await fantasy.overview(me);
   assert.equal(view.round.number, 2);
   assert.equal(view.me.round, 6 * 2 + 2);
@@ -59,7 +60,7 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
   assert.equal(view.players.find(player => player.id === 'c').price, 58, 'c scored nothing in round 1: price falls');
   assert.equal(view.players.find(player => player.id === 'c').change, -2);
   assert.deepEqual(view.league.map(row => [row.id, row.total]), [['a', 14], ['h', 2 * 2 + 6 + 3]].sort((x, y) => y[1] - x[1]));
-  assert.equal(view.dreamTeam[0].id, 'b');
+  assert.equal(view.dreamTeam[0].id, 'i', 'top scorer of the round leads the dream team');
   assert.equal(view.players.find(player => player.id === 'b').selectedBy, 100);
 
   // Round 3: prices follow round 2; two transfers with one free cost 4 points, applied next round.
@@ -68,6 +69,8 @@ test('Fantasy squads, captain, transfers, automatic prices, leagues and rules', 
   assert.equal(view.players.find(player => player.id === 'b').price, 64);
   assert.equal(view.players.find(player => player.id === 'c').price, 58, 'c scored 2 in round 2: price holds');
   assert.equal(view.players.find(player => player.id === 'd').price, 56);
+  assert.equal(view.players.find(player => player.id === 'i').price, 58 + 6, '15 points: +3 steps (0.6m), the per-round maximum');
+  assert.equal(view.players.find(player => player.id === 'i').change, 6);
   assert.ok(view.achievements.find(item => item.id === 'captain').earned);
   assert.ok(view.achievements.find(item => item.id === 'winner').earned);
   const transfer = await fantasy.saveSquad(me, { players: ['b', 'c', 'd', 'g', 'h'], captain: 'c' });

@@ -14,7 +14,8 @@ export const defaultSettings = {
   transferPenalty: 4,
   startPrice: 60,         // 6.0m
   priceStep: 2,           // 0.2m
-  riseThreshold: 5,       // round points at or above this raise the price
+  riseThreshold: 5,       // every this many round points raises the price one step
+  maxRiseSteps: 3,        // biggest rise in one round, in steps (3 x 0.2m = 0.6m)
   fallThreshold: 0,       // round points at or below this lower the price
   minPrice: 40,
   maxPrice: 120,
@@ -42,7 +43,7 @@ export function compositionProblem(players, config) {
 }
 const limits = {
   budget: [50, 2000], squadSize: [1, 11], captainMultiplier: [1, 5], freeTransfers: [0, 5], transferPenalty: [0, 20],
-  startPrice: [10, 300], priceStep: [0, 50], riseThreshold: [1, 100], fallThreshold: [-50, 50], minPrice: [10, 300], maxPrice: [10, 300],
+  startPrice: [10, 300], priceStep: [0, 50], riseThreshold: [1, 100], maxRiseSteps: [1, 10], fallThreshold: [-50, 50], minPrice: [10, 300], maxPrice: [10, 300],
   maxPerCommittee: [0, 11], boardMin: [0, 11], boardMax: [0, 11], headMin: [0, 11], headMax: [0, 11]
 };
 
@@ -122,7 +123,7 @@ export function createFantasy({ run, get, all, transact, today }) {
         let price = before ? before.price : config.startPrice;
         if (before) {
           const scored = pointsByPlayer.get(id)?.get(lastRound) || 0;
-          if (scored >= config.riseThreshold) price += config.priceStep;
+          if (scored >= config.riseThreshold) price += config.priceStep * Math.min(config.maxRiseSteps, Math.floor(scored / config.riseThreshold));
           else if (scored <= config.fallThreshold) price -= config.priceStep;
         }
         price = Math.min(config.maxPrice, Math.max(config.minPrice, price));

@@ -390,6 +390,11 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
 .fx-bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--gold), var(--bright)); transition: width .5s ease; }
 .fx-bar span.over { background: var(--bad); }
 .fx-hit { color: var(--bad); }
+.fx-movers { margin-bottom: 16px; }
+.fx-movers-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
+.fx-movers h3 { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+.fx-mover { width: 100%; justify-content: space-between; gap: 8px; padding: 8px 10px; margin-bottom: 6px; font-weight: 500; background: var(--base); }
+.fx-mover span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fx-synced { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-size: .74rem; color: var(--muted); }
 .fx-synced .i { width: 13px; height: 13px; }
 .fx-steps { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 10px; width: min(460px, 100%); text-align: start; }
@@ -552,6 +557,7 @@ form[data-action="vote"] .poll-total { margin: 2px 0 4px; }
   .row-actions { width: 100%; }
   .row-actions button { flex: 1; }
   .fx-stats span:nth-child(2) { display: none; }
+  .fx-movers-grid { grid-template-columns: 1fr; }
   .fx-list-cols span:nth-child(2) { display: none; }
 }
 
